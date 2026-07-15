@@ -8,7 +8,8 @@
     "@odin/shared": "workspace:*",
     "@odin/ai": "workspace:*",
     "@odin/agent": "workspace:*",
-    "@odin/tools": "workspace:*"
+    "@odin/tools": "workspace:*",
+    "@odin/workspace": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"

@@ -20,6 +20,7 @@
         "@odin/ai": "workspace:*",
         "@odin/shared": "workspace:*",
         "@odin/tools": "workspace:*",
+        "@odin/workspace": "workspace:*",
         "@types/bun": "latest",
       },
       "peerDependencies": {
@@ -44,6 +45,7 @@
       "name": "@odin/ai",
       "dependencies": {
         "@odin/shared": "workspace:*",
+        "@odin/tools": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -81,6 +83,8 @@
     "packages/tools": {
       "name": "@odin/tools",
       "devDependencies": {
+        "@odin/shared": "workspace:*",
+        "@odin/workspace": "workspace:*",
         "@types/bun": "latest",
       },
       "peerDependencies": {
@@ -106,6 +110,15 @@
         "@types/react-dom": "19.2.2",
         "eslint": "^9.39.1",
         "typescript": "5.9.2",
+      },
+    },
+    "packages/workspace": {
+      "name": "@odin/workspace",
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
       },
     },
   },
@@ -153,6 +166,8 @@
     "@odin/shared": ["@odin/shared@workspace:packages/shared"],
 
     "@odin/tools": ["@odin/tools@workspace:packages/tools"],
+
+    "@odin/workspace": ["@odin/workspace@workspace:packages/workspace"],
 
     "@repo/eslint-config": ["@repo/eslint-config@workspace:packages/eslint-config"],
 

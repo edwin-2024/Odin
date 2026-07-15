@@ -10,8 +10,6 @@ import { toOllamaMessages } from "./mapper";
 export class OllamaProvider implements ChatModel {
   constructor(private readonly model: string) { }
 
-
-
   private toOllamaTools(tools: Tool[]) {
     return tools.map((tool) => ({
       type: "function" as const,

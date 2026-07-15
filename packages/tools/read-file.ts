@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 
 import type { Tool } from "./tool";
-
+import type { Workspace } from "@odin/workspace";
 export interface ReadFileInput {
   path: string;
 }
@@ -9,6 +9,9 @@ export interface ReadFileInput {
 export class ReadFileTool
   implements Tool<ReadFileInput> {
   readonly name = "read_file";
+  constructor(
+    private readonly workspace: Workspace,
+  ) { }
 
   readonly description =
     "Read a UTF-8 text file.";
@@ -25,9 +28,8 @@ export class ReadFileTool
   };
 
   async execute(input: ReadFileInput) {
-    const content = await fs.readFile(
+    const content = await this.workspace.read(
       input.path,
-      "utf8",
     );
 
     return {

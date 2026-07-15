@@ -5,7 +5,7 @@ import type { AssistantMessage, ToolCall } from "@odin/shared";
 
 import { Conversation } from "./conversation";
 
-import { ToolRegistry } from "@odin/tools";
+import { ToolRegistry, ToolExecutor } from "@odin/tools";
 import type { AgentCallbacks } from "./agent-events";
 
 export class AgentExecutor {
@@ -13,26 +13,22 @@ export class AgentExecutor {
     private readonly model: ChatModel,
     private readonly conversation: Conversation,
     private readonly registry: ToolRegistry,
+    private readonly toolExecutor: ToolExecutor,
   ) { }
 
   private async executeToolCall(call: ToolCall, callbacks?: AgentCallbacks) {
-    const tool = this.registry.get(call.name);
 
     console.log(
       `🔧 Executing tool: ${call.name}`,
     );
     callbacks?.onToolStart?.(call.name);
 
-    const result = await tool.execute(call.input);
+    const message = await this.toolExecutor.execute(call);
 
-    console.log("✅ Tool result:", result);
+    console.log("✅ Tool result:", message);
     callbacks?.onToolEnd?.(call.name);
+    this.conversation.addTool(message);
 
-    this.conversation.addTool({
-      role: "tool",
-      toolCallId: call.id,
-      content: result.content,
-    });
   }
 
   private async callModel(callbacks?: AgentCallbacks): Promise<AssistantMessage> {

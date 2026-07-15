@@ -3,12 +3,12 @@ import type { ChatModel } from "@odin/ai";
 import { Conversation } from "./conversation";
 import { AgentExecutor } from "./agent-executor";
 
-import { ToolRegistry } from "@odin/tools";
+import { ToolRegistry, ToolExecutor } from "@odin/tools";
 import type { AgentCallbacks } from "./agent-events";
 
 export class Agent {
   private readonly conversation = new Conversation(
-    "You are Odin, a coding assistant."
+    "You are Odin, a coding agent."
   );
 
   private readonly executor: AgentExecutor;
@@ -21,6 +21,7 @@ export class Agent {
       model,
       this.conversation,
       registry,
+      new ToolExecutor(registry)
     );
   }
 

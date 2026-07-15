@@ -1,11 +1,7 @@
 {
-  "name": "@odin/ai",
+  "name": "@odin/workspace",
   "private": true,
   "main": "index.ts",
-  "dependencies": {
-    "@odin/shared": "workspace:*",
-    "@odin/tools": "workspace:*"
-  },
   "devDependencies": {
     "@types/bun": "latest"
   },

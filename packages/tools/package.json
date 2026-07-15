@@ -3,7 +3,9 @@
   "private": true,
   "main": "index.ts",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@odin/workspace": "workspace:*",
+    "@odin/shared": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"

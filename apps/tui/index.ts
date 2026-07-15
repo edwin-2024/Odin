@@ -3,11 +3,16 @@ import { stdin, stdout } from "node:process";
 
 import { Agent } from "@odin/agent";
 import { OllamaProvider } from "@odin/ai";
-import { ReadFileTool, ToolRegistry } from "@odin/tools";
+import { ReadFileTool, ToolRegistry, WriteFileTool } from "@odin/tools";
+import { NodeWorkspace } from "@odin/workspace";
+
 
 async function main() {
+  const workspace = new NodeWorkspace(process.cwd());
+
   const registry = new ToolRegistry();
-  registry.register(new ReadFileTool());
+  registry.register(new ReadFileTool(workspace));
+  registry.register(new WriteFileTool(workspace));
 
   const provider = new OllamaProvider(
     "qwen3:4b-instruct-2507-q4_K_M",
@@ -42,6 +47,13 @@ async function main() {
               console.error(event.error);
               break;
           }
+        },
+        onToolStart(name) {
+          console.log(`\n🔧 Using tool: ${name}`);
+        },
+
+        onToolEnd(name) {
+          console.log(`✅ Finished: ${name}\n`);
         },
       });
 
