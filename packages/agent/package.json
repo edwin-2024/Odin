@@ -1,0 +1,16 @@
+{
+  "name": "@odin/agent",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@odin/shared": "workspace:*",
+    "@odin/ai": "workspace:*",
+    "@odin/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

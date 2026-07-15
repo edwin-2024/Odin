@@ -1,0 +1,14 @@
+{
+  "name": "@odin/ai",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@odin/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

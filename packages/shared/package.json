@@ -1,0 +1,11 @@
+{
+  "name": "@odin/shared",
+  "private": true,
+  "main": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
