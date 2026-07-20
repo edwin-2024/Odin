@@ -2,7 +2,7 @@ export interface ToolResult {
   content: string;
 }
 
-export interface Tool<TInput = unknown> {
+export interface Tool<TInput = any, TCallbacks = any> {
   readonly name: string;
 
   readonly description: string;
@@ -13,5 +13,5 @@ export interface Tool<TInput = unknown> {
     required?: string[];
   };
 
-  execute(input: TInput): Promise<ToolResult>;
+  execute(input: TInput, callbacks?: TCallbacks): Promise<ToolResult>;
 }

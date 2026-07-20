@@ -4,8 +4,8 @@
   "main": "index.ts",
   "devDependencies": {
     "@types/bun": "latest",
-    "@odin/workspace": "workspace:*",
-    "@odin/shared": "workspace:*"
+    "@odin/shared": "workspace:*",
+    "@odin/runtime": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"

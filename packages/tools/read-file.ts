@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 
 import type { Tool } from "./tool";
-import type { Workspace } from "@odin/workspace";
+import type { Workspace } from "@odin/runtime";
 export interface ReadFileInput {
   path: string;
 }
