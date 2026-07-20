@@ -5,7 +5,8 @@
   "dependencies": {
     "@odin/shared": "workspace:*",
     "@odin/ai": "workspace:*",
-    "@odin/tools": "workspace:*"
+    "@odin/tools": "workspace:*",
+    "@odin/runtime": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest"

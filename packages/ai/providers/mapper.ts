@@ -24,7 +24,7 @@ export function toOllamaMessages(messages: Message[]) {
                         tool_calls: message.toolCalls.map((call) => ({
                             function: {
                                 name: call.name,
-                                arguments: call.input,
+                                arguments: call.input as any,
                             },
                         })),
                     }),

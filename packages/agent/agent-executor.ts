@@ -23,7 +23,9 @@ export class AgentExecutor {
     );
     callbacks?.onToolStart?.(call.name);
 
-    const message = await this.toolExecutor.execute(call);
+    const message = await this.toolExecutor.execute(call, {
+      onEvent: (event) => callbacks?.onToolEvent?.(call.name, event)
+    });
 
     console.log("✅ Tool result:", message);
     callbacks?.onToolEnd?.(call.name);
@@ -58,7 +60,7 @@ export class AgentExecutor {
 
   async execute(callbacks?: AgentCallbacks): Promise<AssistantMessage> {
     while (true) {
-      console.log("\n🤖 Calling model... \n");
+      console.log(`\n🤖 Calling model... ${process.env.ODIN_MODEL}\n`);
       const assistant = await this.callModel(callbacks);
 
 

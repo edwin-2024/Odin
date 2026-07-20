@@ -34,7 +34,7 @@ export class OllamaProvider implements ChatModel {
 
       messages: toOllamaMessages(messages),
 
-      tools: this.toOllamaTools(tools),
+      tools: this.toOllamaTools(tools) as any,
     });
 
     (async () => {
@@ -63,7 +63,7 @@ export class OllamaProvider implements ChatModel {
 
                   name: call.function.name,
 
-                  input: call.function.arguments,
+                  input: call.function.arguments as Record<string, unknown>,
                 },
               });
             }
