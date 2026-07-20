@@ -2,6 +2,7 @@
   "name": "odin",
   "private": true,
   "scripts": {
+    "start": "bun run apps/tui/index.ts",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",

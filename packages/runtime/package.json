@@ -1,5 +1,5 @@
 {
-  "name": "@odin/workspace",
+  "name": "@odin/runtime",
   "private": true,
   "main": "index.ts",
   "devDependencies": {
