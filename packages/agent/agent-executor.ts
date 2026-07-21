@@ -8,12 +8,15 @@ import { Conversation } from "./conversation";
 import { ToolRegistry, ToolExecutor } from "@odin/tools";
 import type { AgentCallbacks } from "./agent-events";
 
+import type { ContextManager } from "./context-manager";
+
 export class AgentExecutor {
   constructor(
     private readonly model: ChatModel,
     private readonly conversation: Conversation,
     private readonly registry: ToolRegistry,
     private readonly toolExecutor: ToolExecutor,
+    private readonly contextManager: ContextManager,
   ) { }
 
   private async executeToolCall(call: ToolCall, callbacks?: AgentCallbacks) {
@@ -23,19 +26,32 @@ export class AgentExecutor {
     );
     callbacks?.onToolStart?.(call.name);
 
-    const message = await this.toolExecutor.execute(call, {
-      onEvent: (event) => callbacks?.onToolEvent?.(call.name, event)
-    });
+    try {
+      const message = await this.toolExecutor.execute(call, {
+        onEvent: (event) => callbacks?.onToolEvent?.(call.name, event)
+      });
 
-    console.log("✅ Tool result:", message);
-    callbacks?.onToolEnd?.(call.name);
-    this.conversation.addTool(message);
+      console.log("✅ Tool result:", message);
+      this.conversation.addTool(message);
+    } catch (error) {
+      console.log(`❌ Tool failed:`, error instanceof Error ? error.message : error);
+      this.conversation.addTool({
+        role: "tool",
+        toolCallId: call.id,
+        content: `Error executing tool: ${error instanceof Error ? error.message : String(error)}`
+      });
+    } finally {
+      callbacks?.onToolEnd?.(call.name);
+    }
 
   }
 
   private async callModel(callbacks?: AgentCallbacks): Promise<AssistantMessage> {
+    const history = [...this.conversation.history()];
+    const messages = await this.contextManager.prepare(history);
+
     const stream = await this.model.chat(
-      [...this.conversation.history()],
+      messages,
       this.registry.list(),
     );
 

@@ -1,9 +1,9 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-import { Agent } from "@odin/agent";
+import { Agent, SimpleContextManager } from "@odin/agent";
 import { OllamaProvider } from "@odin/ai";
-import { BashTool, ReadFileTool, ToolRegistry, WriteFileTool, EditFileTool, GitStatusTool } from "@odin/tools";
+import { BashTool, ReadFileTool, ToolRegistry, WriteFileTool, EditFileTool, GitStatusTool, ListDirectoryTool, GlobTool, GrepTool } from "@odin/tools";
 import { CliPermissionManager, type PermissionRule, NodeWorkspace, NodeTerminal, NodeGit } from "@odin/runtime";
 import type { TerminalEvent } from "@odin/runtime/terminal/events";
 import { config } from "dotenv";
@@ -20,6 +20,9 @@ async function main() {
   registry.register(new ReadFileTool(workspace));
   registry.register(new WriteFileTool(workspace));
   registry.register(new EditFileTool(workspace));
+  registry.register(new ListDirectoryTool(workspace));
+  registry.register(new GlobTool(workspace));
+  registry.register(new GrepTool(workspace));
   registry.register(new BashTool(terminal));
   registry.register(new GitStatusTool(git));
 
@@ -50,7 +53,7 @@ async function main() {
 
   const permissions = new CliPermissionManager(rl, policies);
 
-  const agent = new Agent(provider, registry, permissions);
+  const agent = new Agent(provider, registry, permissions, new SimpleContextManager(20));
 
 
 
@@ -64,11 +67,18 @@ async function main() {
       break;
     }
 
+    if (input.trim() === "/clear") {
+      agent.clear();
+      console.log("✨ Conversation memory cleared.\n");
+      continue;
+    }
+
     try {
       await agent.send(input, {
         onEvent(event) {
           switch (event.type) {
             case "text":
+            case "thinking":
               process.stdout.write(event.delta);
               break;
 
@@ -106,7 +116,13 @@ async function main() {
     }
   }
 
-  rl.close();
+  // Ensure all pending readline operations complete before closing
+await rl.close();
+
+process.exit(0);
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

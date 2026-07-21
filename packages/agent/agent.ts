@@ -8,6 +8,8 @@ import type { PermissionManager } from "@odin/runtime";
 import type { AgentCallbacks } from "./agent-events";
 import * as os from "node:os";
 
+import type { ContextManager } from "./context-manager";
+
 export class Agent {
   private readonly conversation = new Conversation(
     `You are Odin, a powerful coding agent. 
@@ -22,7 +24,12 @@ export class Agent {
     You have full access to the local environment and the 'bun' tool via 
     your bash tool.
     Always execute shell commands when asked, do not refuse or claim you 
-    cannot.`
+    cannot.
+    CRITICAL INSTRUCTION: You must ALWAYS explain your reasoning, plan, 
+    and thought process out loud before making any tool calls so the user 
+    can see your thinking. Do not silently call tools.
+    You must NEVER stop your turn midway through. You must either make a tool 
+    call, or provide a final answer to the user.`
   );
 
   private readonly executor: AgentExecutor;
@@ -31,13 +38,19 @@ export class Agent {
     model: ChatModel,
     registry: ToolRegistry,
     permissions: PermissionManager,
+    contextManager: ContextManager,
   ) {
     this.executor = new AgentExecutor(
       model,
       this.conversation,
       registry,
-      new ToolExecutor(registry, permissions)
+      new ToolExecutor(registry, permissions),
+      contextManager
     );
+  }
+
+  clear(): void {
+    this.conversation.clear();
   }
 
   async send(input: string, callbacks?: AgentCallbacks) {
