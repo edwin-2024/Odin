@@ -4,6 +4,8 @@ import type { Tool } from "./tool";
 import type { Workspace } from "@odin/runtime";
 export interface ReadFileInput {
   path: string;
+  startLine?: number;
+  endLine?: number;
 }
 
 export class ReadFileTool
@@ -14,7 +16,7 @@ export class ReadFileTool
   ) { }
 
   readonly description =
-    "Read a UTF-8 text file.";
+    "Read a UTF-8 text file. You can optionally specify startLine and endLine to read a specific range. All responses include line numbers.";
 
   readonly schema = {
     type: "object" as const,
@@ -23,6 +25,14 @@ export class ReadFileTool
         type: "string",
         description: "Path to the file",
       },
+      startLine: {
+        type: "number",
+        description: "The 1-indexed line number to start reading from.",
+      },
+      endLine: {
+        type: "number",
+        description: "The 1-indexed line number to stop reading at.",
+      },
     },
     required: ["path"],
   };
@@ -30,6 +40,7 @@ export class ReadFileTool
   async execute(input: ReadFileInput) {
     const content = await this.workspace.read(
       input.path,
+      { startLine: input.startLine, endLine: input.endLine }
     );
 
     return {
