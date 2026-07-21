@@ -26,6 +26,7 @@ export class MessageBuilder {
 
       case "done":
       case "error":
+      case "thinking":
         break;
 
       default:

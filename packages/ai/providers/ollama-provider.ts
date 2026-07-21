@@ -35,11 +35,32 @@ export class OllamaProvider implements ChatModel {
       messages: toOllamaMessages(messages),
 
       tools: this.toOllamaTools(tools) as any,
+
+      options: {
+        num_ctx: 32768,
+        temperature: 0.1
+      }
     });
 
     (async () => {
       try {
+        let isThinking = false;
+
         for await (const chunk of response) {
+          // Stream thinking
+          const thinking = (chunk.message as any).thinking;
+          
+          if (thinking) {
+            if (!isThinking) {
+              isThinking = true;
+              stream.push({ type: "thinking", delta: `\x1b[90m> Thinking...\n` });
+            }
+            stream.push({ type: "thinking", delta: thinking });
+          } else if (isThinking) {
+            isThinking = false;
+            stream.push({ type: "thinking", delta: `\n> ...done thinking.\x1b[0m\n\n` });
+          }
+
           // Stream text
           const delta = chunk.message.content;
 

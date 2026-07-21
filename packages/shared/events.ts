@@ -1,9 +1,15 @@
 import type { ToolCall } from "./messages";
 
-export type AIEvent = TextEvent | ToolCallEvent | DoneEvent | ErrorEvent;
+export type AIEvent = TextEvent | ToolCallEvent | DoneEvent | ErrorEvent | ThinkingEvent;
 
 export interface TextEvent {
   type: "text";
+
+  delta: string;
+}
+
+export interface ThinkingEvent {
+  type: "thinking";
 
   delta: string;
 }

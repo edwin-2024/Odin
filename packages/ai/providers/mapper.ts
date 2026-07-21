@@ -22,11 +22,13 @@ export function toOllamaMessages(messages: Message[]) {
 
                     ...(message.toolCalls.length > 0 && {
                         tool_calls: message.toolCalls.map((call) => ({
+                            id: call.id,
+                            type: "function",
                             function: {
                                 name: call.name,
                                 arguments: call.input as any,
                             },
-                        })),
+                        })) as any,
                     }),
                 };
 
