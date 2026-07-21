@@ -15,3 +15,11 @@ export interface Tool<TInput = any, TCallbacks = any> {
 
   execute(input: TInput, callbacks?: TCallbacks): Promise<ToolResult>;
 }
+
+export interface ListDirectoryInput {
+  path: string;
+}
+
+export interface GlobInput {
+  pattern: string;
+}
