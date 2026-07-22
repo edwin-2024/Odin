@@ -8,12 +8,15 @@ import { CliPermissionManager, type PermissionRule, NodeWorkspace, NodeTerminal,
 import type { TerminalEvent } from "@odin/runtime/terminal/events";
 import { config } from "dotenv";
 import path from "node:path";
+import { Renderer } from "./renderer";
+import { createInitialState, reducer } from "./state";
+import logUpdate from "log-update";
 
 config({ path: path.join(__dirname, "../../.env") });
 
 async function main() {
-  const workspace = new NodeWorkspace(process.cwd());
   const terminal = new NodeTerminal(process.cwd());
+  const workspace = new NodeWorkspace(process.cwd(), terminal);
   const git = new NodeGit(terminal);
 
   const registry = new ToolRegistry();
@@ -54,8 +57,7 @@ async function main() {
   const permissions = new CliPermissionManager(rl, policies);
 
   const agent = new Agent(provider, registry, permissions, new SimpleContextManager(20));
-
-
+  const renderer = new Renderer(agent.taskManager);
 
   console.log("🤖 Odin");
   console.log("Type 'exit' to quit.");
@@ -74,41 +76,104 @@ async function main() {
     }
 
     try {
+      let state = createInitialState();
+      renderer.startTurn();
+
+      let isPrompting = false;
+      let hasBufferedRenders = false;
+
+      permissions.onBeforePrompt = () => {
+        isPrompting = true;
+        renderer.reset();
+        process.stdout.write("\x1B[?25h"); // Show cursor
+      };
+
+      permissions.onAfterPrompt = () => {
+        isPrompting = false;
+        process.stdout.write("\n"); // Move cursor down to prevent logUpdate from overwriting the prompt
+        if (stdoutQueue.length > 0) {
+          logUpdate.clear();
+          process.stdout.write(stdoutQueue.join(""));
+          stdoutQueue.length = 0;
+          renderer.render(state);
+        } else if (hasBufferedRenders) {
+          renderer.render(state);
+        }
+        hasBufferedRenders = false;
+      };
+
+      let isAssistantSpeaking = false;
+      let activeToolLines = 0;
+      const stdoutQueue: string[] = [];
+
+      const safeWrite = (text: string) => {
+        if (isPrompting) {
+          stdoutQueue.push(text);
+        } else {
+          process.stdout.write(text);
+        }
+      };
+
       await agent.send(input, {
         onEvent(event) {
-          switch (event.type) {
-            case "text":
-            case "thinking":
-              process.stdout.write(event.delta);
-              break;
+          state = reducer(state, event);
 
-            case "error":
-              console.error(event.error);
-              break;
-          }
-        },
-        onToolStart(name) {
-          console.log(`\n🔧 Using tool: ${name}\n`);
-        },
+          let redrawDashboard = false;
 
-        onToolEnd(name) {
-          console.log(`\n✅ Finished: ${name}\n`);
-        },
-
-        onToolEvent(name, event: any) {
-          if (name === "bash") {
-            const terminalEvent = event as TerminalEvent;
-            switch (terminalEvent.type) {
-              case "stdout":
-                process.stdout.write(terminalEvent.data);
-                break;
-              case "stderr":
-                process.stderr.write(terminalEvent.data);
-                break;
+          if (event.type === "model" && (event.payload.type === "text" || event.payload.type === "thinking")) {
+            if (!isAssistantSpeaking) {
+              logUpdate.clear();
+              safeWrite("──────────────────────────\nAssistant\n");
+              isAssistantSpeaking = true;
+            }
+            safeWrite(event.payload.delta);
+            redrawDashboard = false; // Do not redraw dashboard while streaming!
+          } else if (event.type === "tool") {
+            if (event.payload.type === "tool:start") {
+              if (isAssistantSpeaking) {
+                  safeWrite("\n");
+                  isAssistantSpeaking = false;
+              }
+              if (!isPrompting) logUpdate.clear();
+              safeWrite(`──────────────────────────\nTool Output: ${event.payload.toolName}\n`);
+              activeToolLines = 0;
+              redrawDashboard = true;
+            } else if (event.payload.type === "tool:event") {
+              const data = (event.payload.payload as any)?.data;
+              if (data) {
+                if (!isPrompting) logUpdate.clear();
+                safeWrite(`  ${data.trim()}\n`);
+                activeToolLines++;
+                redrawDashboard = true;
+              }
+            } else if (event.payload.type === "tool:end") {
+              if (!isPrompting) logUpdate.clear();
+              if (activeToolLines === 0) {
+                safeWrite(`  Completed.\n`);
+              }
+              safeWrite("──────────────────────────\n");
+              redrawDashboard = true;
+            }
+          } else if (event.type === "task") {
+            if (!isAssistantSpeaking) {
+               redrawDashboard = true;
             }
           }
-        },
+
+          if (isPrompting) {
+            hasBufferedRenders = true;
+          } else if (redrawDashboard) {
+            renderer.render(state);
+          }
+        }
       });
+      
+      if (isAssistantSpeaking) {
+          process.stdout.write("\n");
+      }
+
+      renderer.reset();
+      console.log("──────────────────────────\n");
 
       console.log();
     } catch (err) {
@@ -117,9 +182,9 @@ async function main() {
   }
 
   // Ensure all pending readline operations complete before closing
-await rl.close();
+  await rl.close();
 
-process.exit(0);
+  process.exit(0);
 }
 
 main().catch((err) => {
