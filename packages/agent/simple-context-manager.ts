@@ -20,7 +20,7 @@ export class SimpleContextManager implements ContextManager {
     }
 
     return [
-      messages[0],
+      messages[0]!,
       ...messages.slice(-(this.maxMessages - 1)),
     ];
   }

@@ -5,14 +5,19 @@ export interface GitStatusInput {}
 
 export class GitStatusTool implements Tool<GitStatusInput> {
     readonly name = "git_status";
+  readonly executionMode = "parallel" as const;
 
     readonly description =
         "Get the current status of the git repository.";
 
     readonly schema = {
         type: "object" as const,
-        properties: {},
-        required: [],
+        properties: {
+            dummy: {
+                type: "string",
+                description: "Ignore this field. It exists only to satisfy strict JSON schema parsers.",
+            },
+        },
     };
 
     constructor(

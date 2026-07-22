@@ -4,6 +4,7 @@ import type { ListDirectoryInput, Tool, ToolResult } from "./tool";
 export class ListDirectoryTool
     implements Tool<ListDirectoryInput> {
     readonly name = "list_directory";
+  readonly executionMode = "parallel" as const;
 
     readonly description =
         "Lists the files and folders inside a directory.";

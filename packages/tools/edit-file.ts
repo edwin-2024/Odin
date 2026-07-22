@@ -9,6 +9,7 @@ export interface EditFileInput {
 
 export class EditFileTool implements Tool<EditFileInput> {
     readonly name = "edit_file";
+  readonly executionMode = "serial" as const;
 
     readonly description =
         "Edit an existing file by searching for an exact string match and replacing it.";

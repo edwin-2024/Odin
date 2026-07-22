@@ -16,6 +16,7 @@ export interface GrepInput {
 export class GrepTool
     implements Tool<GrepInput> {
     readonly name = "grep";
+  readonly executionMode = "parallel" as const;
 
     readonly description =
         "Search for text in files.";

@@ -15,6 +15,7 @@ export interface BashCallbacks {
 
 export class BashTool implements Tool<BashInput> {
     readonly name = "bash";
+  readonly executionMode = "serial" as const;
 
     readonly description =
         "Execute a shell command in the current workspace.";

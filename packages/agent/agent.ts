@@ -9,6 +9,7 @@ import type { AgentCallbacks } from "./agent-events";
 import * as os from "node:os";
 
 import type { ContextManager } from "./context-manager";
+import { TaskManager } from "./task-manager";
 
 export class Agent {
   private readonly conversation = new Conversation(
@@ -33,29 +34,37 @@ export class Agent {
   );
 
   private readonly executor: AgentExecutor;
+  public readonly taskManager = new TaskManager();
 
   constructor(
-    model: ChatModel,
-    registry: ToolRegistry,
-    permissions: PermissionManager,
-    contextManager: ContextManager,
+    private readonly model: ChatModel,
+    private readonly registry: ToolRegistry,
+    private readonly permissions: PermissionManager,
+    private readonly contextManager: ContextManager,
   ) {
     this.executor = new AgentExecutor(
       model,
-      this.conversation,
-      registry,
-      new ToolExecutor(registry, permissions),
+      new ToolExecutor(),
       contextManager
     );
   }
 
   clear(): void {
     this.conversation.clear();
+    this.taskManager.clear();
   }
 
   async send(input: string, callbacks?: AgentCallbacks) {
     this.conversation.addUser(input);
 
-    return this.executor.execute(callbacks);
+    this.taskManager.emit = (event) => callbacks?.onEvent?.(event);
+
+    return this.executor.execute({
+      conversation: this.conversation,
+      registry: this.registry,
+      permissions: this.permissions,
+      callbacks,
+      taskManager: this.taskManager,
+    });
   }
 }

@@ -11,6 +11,7 @@ export interface ReadFileInput {
 export class ReadFileTool
   implements Tool<ReadFileInput> {
   readonly name = "read_file";
+  readonly executionMode = "parallel" as const;
   constructor(
     private readonly workspace: Workspace,
   ) { }

@@ -5,6 +5,7 @@ import type { GlobInput, Tool, ToolResult } from "./tool";
 
 export class GlobTool implements Tool<GlobInput> {
     readonly name = "glob";
+  readonly executionMode = "parallel" as const;
 
     readonly description =
         "Find files matching a glob pattern.";

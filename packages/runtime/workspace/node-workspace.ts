@@ -8,11 +8,13 @@ import type {
     GrepOptions,
 } from "./workspace";
 import type { DirectoryEntry, Workspace } from "./workspace";
+import type { Terminal } from "../terminal/terminal";
 
 export class NodeWorkspace
     implements Workspace {
     constructor(
         private readonly root: string,
+        private readonly terminal: Terminal,
     ) { }
 
     private resolve(file: string) {
@@ -30,14 +32,14 @@ export class NodeWorkspace
             );
 
             const lines = text.split("\n");
-            
+
             const startIdx = options?.startLine ? Math.max(0, options.startLine - 1) : 0;
             const endIdx = options?.endLine ? Math.min(lines.length, options.endLine) : lines.length;
-            
+
             const sliced = lines.slice(startIdx, endIdx);
-            
+
             return sliced.map((line, idx) => `${startIdx + idx + 1} | ${line}`).join("\n");
-        } catch (error) {
+        } catch (error: any) {
             if (error.code === "ENOENT") {
                 throw new Error(`Error: File not found: ${file}.`);
             }
@@ -130,59 +132,59 @@ export class NodeWorkspace
         pattern: string,
         options: GrepOptions = {}
     ): Promise<GrepMatch[]> {
-        // Pure Node.js workaround using fast-glob instead of external ripgrep
-        const targetPath = this.resolve(options.path ?? ".");
-        
-        const stat = await fs.stat(targetPath).catch(() => null);
-        let files: string[] = [];
+        const args = [
+            "rg",
+            "--json",
+            "-n",
+        ];
 
-        if (stat?.isFile()) {
-            files = [targetPath];
-        } else if (stat?.isDirectory()) {
-            files = await fg("**/*", {
-                cwd: targetPath,
-                ignore: ["**/node_modules/**", "**/.git/**", "**/.next/**", "**/dist/**", "**/build/**"],
-                onlyFiles: true,
-                absolute: true,
-            });
-        } else {
-            return [];
+        if (options.caseSensitive === false) {
+            args.push("-i");
         }
 
-        const matches: GrepMatch[] = [];
-        const searchPattern = options.caseSensitive === false ? pattern.toLowerCase() : pattern;
+        if (options.maxResults) {
+            args.push("-m", String(options.maxResults));
+        }
 
-        for (const file of files) {
-            if (options.maxResults && matches.length >= options.maxResults) {
-                break;
+        const safePattern = pattern.replace(/"/g, '\\"');
+        const safePath = (options.path ?? ".").replace(/"/g, '\\"');
+        
+        args.push(`"${safePattern}"`);
+        args.push(`"${safePath}"`);
+
+        const command = args.join(" ");
+        const stream = this.terminal.run(command);
+        
+        let stdout = "";
+        for await (const event of stream) {
+            if (event.type === "stdout") {
+                stdout += event.data;
             }
+        }
 
+        const lines = stdout.split("\n").filter(Boolean);
+        const matches: GrepMatch[] = [];
+
+        for (const line of lines) {
             try {
-                const content = await fs.readFile(file, "utf8");
-                const lines = content.split("\n");
-                
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    const searchLine = options.caseSensitive === false ? line.toLowerCase() : line;
-                    const col = searchLine.indexOf(searchPattern);
-                    
-                    if (col !== -1) {
-                        // Calculate relative path for output
-                        const relativePath = path.relative(this.root, file).replace(/\\/g, "/");
-                        matches.push({
-                            path: relativePath,
-                            line: i + 1,
-                            column: col + 1,
-                            text: line.trimEnd(),
-                        });
-                        
-                        if (options.maxResults && matches.length >= options.maxResults) {
-                            break;
-                        }
-                    }
+                const parsed = JSON.parse(line);
+                if (parsed.type === "match") {
+                    const data = parsed.data;
+                    const matchPath = data.path.text;
+                    const lineNumber = data.line_number;
+                    const submatch = data.submatches[0];
+                    const column = submatch ? submatch.start + 1 : 1;
+                    const textContent = data.lines.text.trimEnd();
+
+                    matches.push({
+                        path: matchPath.replace(/\\/g, "/"),
+                        line: lineNumber,
+                        column,
+                        text: textContent,
+                    });
                 }
             } catch {
-                // Ignore binary files or files that can't be read as utf8
+                // Ignore parse errors from non-JSON output
             }
         }
 

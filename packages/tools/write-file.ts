@@ -9,6 +9,7 @@ export interface WriteFileInput {
 export class WriteFileTool
     implements Tool<WriteFileInput> {
     readonly name = "write_file";
+  readonly executionMode = "serial" as const;
 
     readonly description =
         "Write UTF-8 text to a file.";
