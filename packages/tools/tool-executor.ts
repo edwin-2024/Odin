@@ -5,11 +5,11 @@ import type { PermissionManager } from "@odin/runtime";
 
 
 export interface ToolCallbacks {
-    onEvent?(event: {
-        type: "tool:start" | "tool:end" | "tool:event";
-        toolName: string;
-        payload?: unknown;
-    }): void;
+    onEvent?(event: 
+        | { phase: "start"; id: string; toolName: string }
+        | { phase: "event"; id: string; toolName: string; payload: unknown }
+        | { phase: "end"; id: string; toolName: string }
+    ): void;
 }
 export interface ToolExecutionContext {
     readonly registry: ToolRegistry;
@@ -43,13 +43,15 @@ export class ToolExecutor {
             }
 
             context.callbacks?.onEvent?.({
-                type: "tool:start",
+                phase: "start",
+                id: call.id,
                 toolName: call.name
             });
 
             const result = await tool.execute(call.input, {
                 onEvent: (event: unknown) => context.callbacks?.onEvent?.({
-                    type: "tool:event",
+                    phase: "event",
+                    id: call.id,
                     toolName: call.name,
                     payload: event
                 })
@@ -73,7 +75,8 @@ export class ToolExecutor {
             };
         } finally {
             context.callbacks?.onEvent?.({
-                type: "tool:end",
+                phase: "end",
+                id: call.id,
                 toolName: call.name
             });
         }

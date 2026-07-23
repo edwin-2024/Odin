@@ -1,32 +1,28 @@
 import type { RuntimeState } from "./state";
-import type { TaskManager } from "@odin/agent";
-import type { TerminalEvent } from "@odin/runtime/terminal/events";
+import type { TelemetryMetrics } from "@odin/agent";
 import logUpdate from "log-update";
 
+export interface RuntimeSnapshot {
+    state: RuntimeState;
+    telemetry: TelemetryMetrics;
+}
+
 export class Renderer {
-    private committedIndex = 0;
-    private lastEntriesCount = 0;
-
-    constructor(private readonly taskManager: TaskManager) {}
-
-    startTurn() {
-        this.committedIndex = 0;
-        this.lastEntriesCount = 0;
+    hide() {
+        logUpdate.clear();
     }
 
-    reset() {
+    freeze() {
         logUpdate.done();
-        this.committedIndex = this.lastEntriesCount;
     }
 
-    render(state: RuntimeState) {
-        this.lastEntriesCount = state.entries.length;
+    render(snapshot: RuntimeSnapshot) {
         let output = "";
         
         output += "──────────────────────────\n";
         output += "Tasks\n";
         
-        const tasks = this.taskManager.list();
+        const tasks = [...snapshot.state.tasks.values()];
         for (const task of tasks) {
             let icon = " ";
             if (task.status === "running") icon = "▶";
@@ -44,6 +40,14 @@ export class Renderer {
         }
         
         output += "──────────────────────────\n";
+
+        // Render Telemetry Summary if the turn is finished
+        if (snapshot.telemetry.finishedAt) {
+            output += `Total Duration: ${snapshot.telemetry.totalDurationMs} ms\n`;
+            output += `Language Model: ${snapshot.telemetry.modelDurationMs} ms (${snapshot.telemetry.reasoningIterations} calls)\n`;
+            output += `Tools Executed: ${snapshot.telemetry.toolCalls} (${snapshot.telemetry.toolWallClockMs} ms wall-clock, ${snapshot.telemetry.toolAccumulatedMs} ms accumulated)\n`;
+            output += "──────────────────────────\n";
+        }
 
         logUpdate(output);
     }

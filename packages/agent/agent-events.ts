@@ -1,21 +1,15 @@
 import type { AIEvent } from "@odin/shared";
 import type { Task } from "./task";
 
-export interface TaskEvent {
-    type: "task:started" | "task:completed" | "task:failed";
-    task: Readonly<Task>;
-}
+export type TaskEvent = 
+    | { phase: "start"; task: Readonly<Task> }
+    | { phase: "complete"; task: Readonly<Task> }
+    | { phase: "fail"; task: Readonly<Task>; error?: unknown };
 
-export interface ToolEvent {
-    type: "tool:start" | "tool:end" | "tool:event";
-    toolName: string;
-    payload?: unknown;
-}
-
-export interface ModelEvent {
-    type: "model";
-    payload: AIEvent;
-}
+export type ToolEvent = 
+    | { phase: "start"; id: string; toolName: string }
+    | { phase: "event"; id: string; toolName: string; payload: unknown }
+    | { phase: "end"; id: string; toolName: string };
 
 export type AgentEvent =
     | { type: "task"; payload: TaskEvent }

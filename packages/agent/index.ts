@@ -8,3 +8,4 @@ export * from "./simple-context-manager";
 export * from "./execution-context";
 export * from "./task";
 export * from "./task-manager";
+export * from "./telemetry";

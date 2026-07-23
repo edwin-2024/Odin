@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-import { Agent, SimpleContextManager } from "@odin/agent";
+import { Agent, SimpleContextManager, TelemetryCollector } from "@odin/agent";
 import { OllamaProvider } from "@odin/ai";
 import { BashTool, ReadFileTool, ToolRegistry, WriteFileTool, EditFileTool, GitStatusTool, ListDirectoryTool, GlobTool, GrepTool } from "@odin/tools";
 import { CliPermissionManager, type PermissionRule, NodeWorkspace, NodeTerminal, NodeGit } from "@odin/runtime";
@@ -57,7 +57,6 @@ async function main() {
   const permissions = new CliPermissionManager(rl, policies);
 
   const agent = new Agent(provider, registry, permissions, new SimpleContextManager(20));
-  const renderer = new Renderer(agent.taskManager);
 
   console.log("🤖 Odin");
   console.log("Type 'exit' to quit.");
@@ -77,14 +76,15 @@ async function main() {
 
     try {
       let state = createInitialState();
-      renderer.startTurn();
+      const telemetry = new TelemetryCollector();
+      const renderer = new Renderer();
 
       let isPrompting = false;
       let hasBufferedRenders = false;
 
       permissions.onBeforePrompt = () => {
         isPrompting = true;
-        renderer.reset();
+        renderer.hide();
         process.stdout.write("\x1B[?25h"); // Show cursor
       };
 
@@ -95,16 +95,16 @@ async function main() {
           logUpdate.clear();
           process.stdout.write(stdoutQueue.join(""));
           stdoutQueue.length = 0;
-          renderer.render(state);
+          renderer.render({ state, telemetry: telemetry.getMetrics() });
         } else if (hasBufferedRenders) {
-          renderer.render(state);
+          renderer.render({ state, telemetry: telemetry.getMetrics() });
         }
         hasBufferedRenders = false;
       };
 
       let isAssistantSpeaking = false;
-      let activeToolLines = 0;
       const stdoutQueue: string[] = [];
+      const toolBuffers = new Map<string, string[]>();
 
       const safeWrite = (text: string) => {
         if (isPrompting) {
@@ -116,10 +116,27 @@ async function main() {
 
       await agent.send(input, {
         onEvent(event) {
+          // 1. Process Event through Reducer for Live State
           state = reducer(state, event);
+
+          // 2. Process Event through TelemetryCollector for Metrics
+          if (event.type === "model") {
+             if (event.payload.type === "thinking" || event.payload.type === "text") {
+                 // We don't have an explicit 'model:start' event, so we infer it
+                 if (!isAssistantSpeaking) {
+                     telemetry.modelStarted();
+                 }
+             } else if (event.payload.type === "done" || event.payload.type === "error" || event.payload.type === "tool-call") {
+                 telemetry.modelFinished();
+             }
+          } else if (event.type === "tool") {
+             if (event.payload.phase === "start") telemetry.toolStarted(event.payload.id);
+             else if (event.payload.phase === "end") telemetry.toolFinished(event.payload.id);
+          }
 
           let redrawDashboard = false;
 
+          // 3. Process Event for stdout projection
           if (event.type === "model" && (event.payload.type === "text" || event.payload.type === "thinking")) {
             if (!isAssistantSpeaking) {
               logUpdate.clear();
@@ -129,29 +146,39 @@ async function main() {
             safeWrite(event.payload.delta);
             redrawDashboard = false; // Do not redraw dashboard while streaming!
           } else if (event.type === "tool") {
-            if (event.payload.type === "tool:start") {
+            const { phase, id, toolName } = event.payload;
+            
+            if (phase === "start") {
               if (isAssistantSpeaking) {
                   safeWrite("\n");
                   isAssistantSpeaking = false;
               }
-              if (!isPrompting) logUpdate.clear();
-              safeWrite(`──────────────────────────\nTool Output: ${event.payload.toolName}\n`);
-              activeToolLines = 0;
+              toolBuffers.set(id, []);
               redrawDashboard = true;
-            } else if (event.payload.type === "tool:event") {
-              const data = (event.payload.payload as any)?.data;
+            } else if (phase === "event") {
+              const data = (event.payload as any)?.payload?.data;
               if (data) {
-                if (!isPrompting) logUpdate.clear();
-                safeWrite(`  ${data.trim()}\n`);
-                activeToolLines++;
-                redrawDashboard = true;
+                  const lines = toolBuffers.get(id) || [];
+                  lines.push(data.trim());
+                  toolBuffers.set(id, lines);
               }
-            } else if (event.payload.type === "tool:end") {
+              redrawDashboard = true;
+            } else if (phase === "end") {
               if (!isPrompting) logUpdate.clear();
-              if (activeToolLines === 0) {
+              
+              safeWrite(`──────────────────────────\nTool Output: ${toolName}\n`);
+              
+              const lines = toolBuffers.get(id) || [];
+              for (const line of lines) {
+                  safeWrite(`  ${line}\n`);
+              }
+              
+              if (lines.length === 0) {
                 safeWrite(`  Completed.\n`);
               }
               safeWrite("──────────────────────────\n");
+              
+              toolBuffers.delete(id);
               redrawDashboard = true;
             }
           } else if (event.type === "task") {
@@ -163,7 +190,7 @@ async function main() {
           if (isPrompting) {
             hasBufferedRenders = true;
           } else if (redrawDashboard) {
-            renderer.render(state);
+            renderer.render({ state, telemetry: telemetry.getMetrics() });
           }
         }
       });
@@ -172,9 +199,9 @@ async function main() {
           process.stdout.write("\n");
       }
 
-      renderer.reset();
-      console.log("──────────────────────────\n");
-
+      telemetry.turnFinished();
+      renderer.render({ state, telemetry: telemetry.getMetrics() });
+      renderer.freeze();
       console.log();
     } catch (err) {
       console.error(err);

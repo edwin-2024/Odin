@@ -20,7 +20,7 @@ export class TaskManager {
 
         this.emit?.({
             type: "task",
-            payload: { type: "task:started", task }
+            payload: { phase: "start", task }
         });
 
         return {
@@ -30,7 +30,7 @@ export class TaskManager {
                 task.completedAt = new Date();
                 this.emit?.({
                     type: "task",
-                    payload: { type: "task:completed", task }
+                    payload: { phase: "complete", task }
                 });
             },
             fail: (error?: unknown) => {
@@ -38,7 +38,7 @@ export class TaskManager {
                 task.completedAt = new Date();
                 this.emit?.({
                     type: "task",
-                    payload: { type: "task:failed", task }
+                    payload: { phase: "fail", task, error }
                 });
             }
         };

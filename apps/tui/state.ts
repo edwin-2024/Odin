@@ -2,70 +2,67 @@ import type { TaskManager, AgentEvent } from "@odin/agent";
 import type { Task } from "@odin/agent";
 
 export interface ToolExecution {
+    id: string;
     toolName: string;
-    events: any[];
-    status: "running" | "completed";
 }
-
-export type OutputEntry = 
-    | { type: "text"; text: string }
-    | { type: "tool"; toolName: string; events: any[]; status: "running" | "completed" };
 
 export interface RuntimeState {
     currentTask?: Readonly<Task>;
-    entries: OutputEntry[];
+    tasks: Map<string, Readonly<Task>>;
+    runningTools: Map<string, ToolExecution>;
+    completedTools: ToolExecution[];
 }
 
 export function createInitialState(): RuntimeState {
     return {
-        entries: []
+        tasks: new Map(),
+        runningTools: new Map(),
+        completedTools: []
     };
 }
 
 export function reducer(state: RuntimeState, event: AgentEvent): RuntimeState {
+    // Redux-style shallow copy of state maps/arrays if we modify them
     const nextState = { ...state };
 
     switch (event.type) {
         case "task": {
-            if (event.payload.type === "task:started") {
-                nextState.currentTask = event.payload.task;
-            } else if (event.payload.type === "task:completed" || event.payload.type === "task:failed") {
-                nextState.currentTask = event.payload.task;
+            const { phase, task } = event.payload;
+            
+            // Clone the tasks map so React-style pure renders can detect change
+            nextState.tasks = new Map(state.tasks);
+            nextState.tasks.set(task.id, task);
+
+            if (phase === "start") {
+                nextState.currentTask = task;
+            } else if (phase === "complete" || phase === "fail") {
+                nextState.currentTask = task;
             }
             break;
         }
 
         case "tool": {
-            const { toolName, type, payload } = event.payload;
+            const { phase, id, toolName } = event.payload;
             
-            if (type === "tool:start") {
-                nextState.entries.push({ type: "tool", toolName, events: [], status: "running" });
-            } else {
-                for (let i = nextState.entries.length - 1; i >= 0; i--) {
-                    const entry = nextState.entries[i];
-                    if (entry && entry.type === "tool" && entry.toolName === toolName && entry.status === "running") {
-                        if (type === "tool:event") {
-                            entry.events.push(payload);
-                        } else if (type === "tool:end") {
-                            entry.status = "completed";
-                        }
-                        break;
-                    }
+            if (phase === "start") {
+                nextState.runningTools = new Map(state.runningTools);
+                nextState.runningTools.set(id, { id, toolName });
+            } else if (phase === "end") {
+                const execution = state.runningTools.get(id);
+                if (execution) {
+                    nextState.runningTools = new Map(state.runningTools);
+                    nextState.runningTools.delete(id);
+                    
+                    nextState.completedTools = [...state.completedTools, execution];
                 }
             }
+            // For 'event' phase we don't modify state in this minimal normalized view,
+            // but we could store outputs here if needed.
             break;
         }
 
         case "model": {
-            const aiEvent = event.payload;
-            if (aiEvent.type === "text" || aiEvent.type === "thinking") {
-                const lastEntry = nextState.entries[nextState.entries.length - 1];
-                if (lastEntry && lastEntry.type === "text") {
-                    lastEntry.text += aiEvent.delta;
-                } else {
-                    nextState.entries.push({ type: "text", text: aiEvent.delta });
-                }
-            }
+            // Text events are streamed directly to stdout, no state mutation required
             break;
         }
     }
