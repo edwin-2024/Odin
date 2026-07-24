@@ -1,6 +1,8 @@
 import type { RuntimeState } from "./state";
 import type { TelemetryMetrics } from "@odin/agent";
 import logUpdate from "log-update";
+import { c, taskIcon, boxTop, boxRow, boxBottom, formatDuration } from "./theme";
+import { Spinner } from "./spinner";
 
 export interface RuntimeSnapshot {
     state: RuntimeState;
@@ -8,47 +10,80 @@ export interface RuntimeSnapshot {
 }
 
 export class Renderer {
+    private readonly spinner = new Spinner("dots");
+    private snapshot?: RuntimeSnapshot;
+
     hide() {
         logUpdate.clear();
     }
 
     freeze() {
+        this.spinner.stop();
         logUpdate.done();
     }
 
+    startSpinner() {
+        if (!this.spinner.isRunning) {
+            this.spinner.start(() => {
+                if (this.snapshot) {
+                    this.render(this.snapshot);
+                }
+            });
+        }
+    }
+
+    stopSpinner() {
+        this.spinner.stop();
+    }
+
     render(snapshot: RuntimeSnapshot) {
-        let output = "";
-        
-        output += "──────────────────────────\n";
-        output += "Tasks\n";
-        
-        const tasks = [...snapshot.state.tasks.values()];
-        for (const task of tasks) {
-            let icon = " ";
-            if (task.status === "running") icon = "▶";
-            else if (task.status === "completed") icon = "✓";
-            else if (task.status === "failed") icon = "✗";
+        this.snapshot = snapshot;
+        const { state, telemetry } = snapshot;
 
-            let durationStr = "";
-            if (task.startedAt) {
-                const end = task.completedAt || new Date();
-                const ms = end.getTime() - task.startedAt.getTime();
-                durationStr = ` (${ms} ms)`;
+        const lines: string[] = [];
+
+        // ── Plan Box ───────────────────────────────────────────
+        if (state.plan) {
+            lines.push(boxTop("Plan"));
+            for (const task of state.plan.tasks) {
+                const icon = task.status === "running"
+                    ? c.accent(this.spinner.getFrame())
+                    : taskIcon(task.status);
+                const title = task.status === "running"
+                    ? c.white(task.title)
+                    : task.status === "completed"
+                        ? c.dim(task.title)
+                        : task.status === "failed"
+                            ? c.red(task.title)
+                            : c.dim(task.title);
+                lines.push(boxRow(`${icon} ${title}`));
             }
-
-            output += `${icon} ${task.description}${durationStr}\n`;
-        }
-        
-        output += "──────────────────────────\n";
-
-        // Render Telemetry Summary if the turn is finished
-        if (snapshot.telemetry.finishedAt) {
-            output += `Total Duration: ${snapshot.telemetry.totalDurationMs} ms\n`;
-            output += `Language Model: ${snapshot.telemetry.modelDurationMs} ms (${snapshot.telemetry.reasoningIterations} calls)\n`;
-            output += `Tools Executed: ${snapshot.telemetry.toolCalls} (${snapshot.telemetry.toolWallClockMs} ms wall-clock, ${snapshot.telemetry.toolAccumulatedMs} ms accumulated)\n`;
-            output += "──────────────────────────\n";
+            lines.push(boxBottom());
+        } else {
+            // Planning phase — no plan yet
+            lines.push(boxTop("Plan"));
+            lines.push(boxRow(`${c.accent(this.spinner.getFrame())} ${c.dim("Generating plan...")}`));
+            lines.push(boxBottom());
         }
 
-        logUpdate(output);
+        // ── Active Tool Indicator ──────────────────────────────
+        if (state.phase === "tool" && state.currentToolName) {
+            lines.push(
+                `  ${c.info(this.spinner.getFrame())} ${c.dim("Running")} ${c.cyan(state.currentToolName)}${c.dim("...")}`
+            );
+        }
+
+        // ── Telemetry Summary (compact, dimmed) ────────────────
+        if (telemetry.finishedAt) {
+            const total = formatDuration(telemetry.totalDurationMs);
+            const model = formatDuration(telemetry.modelDurationMs);
+            const tools = formatDuration(telemetry.toolWallClockMs);
+            lines.push("");
+            lines.push(
+                c.dim(`  ─ ${total} total · ${telemetry.reasoningIterations} model calls (${model}) · ${telemetry.toolCalls} tools (${tools})`)
+            );
+        }
+
+        logUpdate(lines.join("\n"));
     }
 }

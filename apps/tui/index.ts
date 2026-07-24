@@ -8,8 +8,11 @@ import { CliPermissionManager, type PermissionRule, NodeWorkspace, NodeTerminal,
 import type { TerminalEvent } from "@odin/runtime/terminal/events";
 import { config } from "dotenv";
 import path from "node:path";
+import chalk from "chalk";
+
 import { Renderer } from "./renderer";
 import { createInitialState, reducer } from "./state";
+import { c, horizontalRule, formatDuration, GUTTER } from "./theme";
 import logUpdate from "log-update";
 
 config({ path: path.join(__dirname, "../../.env") });
@@ -28,7 +31,6 @@ async function main() {
   registry.register(new GrepTool(workspace));
   registry.register(new BashTool(terminal));
   registry.register(new GitStatusTool(git));
-
 
   const modelName = process.env.ODIN_MODEL || "qwen3:4b-instruct-2507-q4_K_M";
 
@@ -58,11 +60,14 @@ async function main() {
 
   const agent = new Agent(provider, registry, permissions, new SimpleContextManager(20));
 
-  console.log("🤖 Odin");
-  console.log("Type 'exit' to quit.");
+  // ── Welcome Banner ─────────────────────────────────────────
+  console.log("");
+  console.log(`  ${c.bold(c.accent("⬡"))} ${c.bold("Odin")} ${c.dim(`· ${modelName}`)}`);
+  console.log(c.dim(`  Type 'exit' to quit, '/clear' to reset memory.`));
+  console.log("");
 
   while (true) {
-    const input = await rl.question("> ");
+    const input = await rl.question(c.accent("> "));
 
     if (input.trim() === "exit") {
       break;
@@ -70,7 +75,7 @@ async function main() {
 
     if (input.trim() === "/clear") {
       agent.clear();
-      console.log("✨ Conversation memory cleared.\n");
+      console.log(`  ${c.success("✓")} ${c.dim("Conversation memory cleared.")}\n`);
       continue;
     }
 
@@ -82,27 +87,35 @@ async function main() {
       let isPrompting = false;
       let hasBufferedRenders = false;
 
+      // Start the spinner immediately (planning phase)
+      renderer.render({ state, telemetry: telemetry.getMetrics() });
+      renderer.startSpinner();
+
       permissions.onBeforePrompt = () => {
         isPrompting = true;
+        renderer.stopSpinner();
         renderer.hide();
         process.stdout.write("\x1B[?25h"); // Show cursor
       };
 
       permissions.onAfterPrompt = () => {
         isPrompting = false;
-        process.stdout.write("\n"); // Move cursor down to prevent logUpdate from overwriting the prompt
+        process.stdout.write("\n");
         if (stdoutQueue.length > 0) {
           logUpdate.clear();
           process.stdout.write(stdoutQueue.join(""));
           stdoutQueue.length = 0;
           renderer.render({ state, telemetry: telemetry.getMetrics() });
+          renderer.startSpinner();
         } else if (hasBufferedRenders) {
           renderer.render({ state, telemetry: telemetry.getMetrics() });
+          renderer.startSpinner();
         }
         hasBufferedRenders = false;
       };
 
       let isAssistantSpeaking = false;
+      let isThinking = false;
       const stdoutQueue: string[] = [];
       const toolBuffers = new Map<string, string[]>();
 
@@ -116,14 +129,13 @@ async function main() {
 
       await agent.send(input, {
         onEvent(event) {
-          // 1. Process Event through Reducer for Live State
+          // 1. State reducer
           state = reducer(state, event);
 
-          // 2. Process Event through TelemetryCollector for Metrics
+          // 2. Telemetry
           if (event.type === "model") {
              if (event.payload.type === "thinking" || event.payload.type === "text") {
-                 // We don't have an explicit 'model:start' event, so we infer it
-                 if (!isAssistantSpeaking) {
+                 if (!isAssistantSpeaking && !isThinking) {
                      telemetry.modelStarted();
                  }
              } else if (event.payload.type === "done" || event.payload.type === "error" || event.payload.type === "tool-call") {
@@ -136,24 +148,60 @@ async function main() {
 
           let redrawDashboard = false;
 
-          // 3. Process Event for stdout projection
-          if (event.type === "model" && (event.payload.type === "text" || event.payload.type === "thinking")) {
-            if (!isAssistantSpeaking) {
-              logUpdate.clear();
-              safeWrite("──────────────────────────\nAssistant\n");
-              isAssistantSpeaking = true;
+          // 3. Stdout projection
+          if (event.type === "model") {
+            const payload = event.payload;
+
+            if (payload.type === "thinking") {
+              // Dimmed thinking tokens
+              if (!isThinking) {
+                renderer.stopSpinner();
+                logUpdate.clear();
+                safeWrite(`\n  ${c.dim("💭 Thinking...")}\n`);
+                isThinking = true;
+              }
+              safeWrite(c.dim(payload.delta));
+              redrawDashboard = false;
+            } else if (payload.type === "text") {
+              if (isThinking) {
+                // Transition from thinking to speaking
+                safeWrite("\n\n");
+                isThinking = false;
+              }
+              if (!isAssistantSpeaking) {
+                renderer.stopSpinner();
+                logUpdate.clear();
+                safeWrite(`\n`);
+                isAssistantSpeaking = true;
+              }
+              safeWrite(payload.delta);
+              redrawDashboard = false;
+            } else if (payload.type === "done" || payload.type === "error") {
+              if (isThinking) {
+                safeWrite("\n");
+                isThinking = false;
+              }
+              if (isAssistantSpeaking) {
+                safeWrite("\n");
+                isAssistantSpeaking = false;
+              }
+              redrawDashboard = true;
+            } else if (payload.type === "tool-call") {
+              if (isThinking) {
+                safeWrite("\n");
+                isThinking = false;
+              }
+              if (isAssistantSpeaking) {
+                safeWrite("\n");
+                isAssistantSpeaking = false;
+              }
             }
-            safeWrite(event.payload.delta);
-            redrawDashboard = false; // Do not redraw dashboard while streaming!
           } else if (event.type === "tool") {
             const { phase, id, toolName } = event.payload;
             
             if (phase === "start") {
-              if (isAssistantSpeaking) {
-                  safeWrite("\n");
-                  isAssistantSpeaking = false;
-              }
               toolBuffers.set(id, []);
+              renderer.startSpinner();
               redrawDashboard = true;
             } else if (phase === "event") {
               const data = (event.payload as any)?.payload?.data;
@@ -162,26 +210,33 @@ async function main() {
                   lines.push(data.trim());
                   toolBuffers.set(id, lines);
               }
-              redrawDashboard = true;
             } else if (phase === "end") {
+              renderer.stopSpinner();
               if (!isPrompting) logUpdate.clear();
               
-              safeWrite(`──────────────────────────\nTool Output: ${toolName}\n`);
-              
+              // 1-line summary
               const lines = toolBuffers.get(id) || [];
-              for (const line of lines) {
-                  safeWrite(`  ${line}\n`);
+              const execution = state.completedTools.find(t => t.id === id);
+              const duration = execution?.finishedAt && execution?.startedAt
+                  ? formatDuration(execution.finishedAt - execution.startedAt)
+                  : "";
+              const durationStr = duration ? c.dim(` (${duration})`) : "";
+
+              let summary = "";
+              if (lines.length === 0) {
+                summary = c.dim("done");
+              } else if (lines.length === 1) {
+                summary = c.dim(lines[0]!.substring(0, 60));
+              } else {
+                summary = c.dim(`${lines.length} results`);
               }
               
-              if (lines.length === 0) {
-                safeWrite(`  Completed.\n`);
-              }
-              safeWrite("──────────────────────────\n");
+              safeWrite(`  ${c.success("✓")} ${c.cyan(toolName)}${durationStr} ${c.dim("·")} ${summary}\n`);
               
               toolBuffers.delete(id);
               redrawDashboard = true;
             }
-          } else if (event.type === "task") {
+          } else if (event.type === "plan:set") {
             if (!isAssistantSpeaking) {
                redrawDashboard = true;
             }
@@ -195,22 +250,21 @@ async function main() {
         }
       });
       
-      if (isAssistantSpeaking) {
+      if (isAssistantSpeaking || isThinking) {
           process.stdout.write("\n");
       }
 
       telemetry.turnFinished();
       renderer.render({ state, telemetry: telemetry.getMetrics() });
       renderer.freeze();
-      console.log();
+      console.log("");
     } catch (err) {
-      console.error(err);
+      console.error(c.error(`\n  Error: ${err}`));
     }
   }
 
-  // Ensure all pending readline operations complete before closing
   await rl.close();
-
+  console.log(c.dim("\n  Goodbye.\n"));
   process.exit(0);
 }
 

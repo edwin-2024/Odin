@@ -1,43 +1,38 @@
-import type { TaskManager, AgentEvent } from "@odin/agent";
-import type { Task } from "@odin/agent";
+import type { AgentEvent } from "@odin/agent";
+import type { ExecutionPlan } from "@odin/agent/planning";
 
-export interface ToolExecution {
+interface ToolExecution {
     id: string;
     toolName: string;
+    startedAt: number;
+    finishedAt?: number;
 }
 
+type Phase = "idle" | "planning" | "thinking" | "tool" | "done";
+
 export interface RuntimeState {
-    currentTask?: Readonly<Task>;
-    tasks: Map<string, Readonly<Task>>;
+    plan?: ExecutionPlan;
+    phase: Phase;
+    currentToolName?: string;
     runningTools: Map<string, ToolExecution>;
     completedTools: ToolExecution[];
 }
 
 export function createInitialState(): RuntimeState {
     return {
-        tasks: new Map(),
+        phase: "planning",
         runningTools: new Map(),
         completedTools: []
     };
 }
 
 export function reducer(state: RuntimeState, event: AgentEvent): RuntimeState {
-    // Redux-style shallow copy of state maps/arrays if we modify them
     const nextState = { ...state };
 
     switch (event.type) {
-        case "task": {
-            const { phase, task } = event.payload;
-            
-            // Clone the tasks map so React-style pure renders can detect change
-            nextState.tasks = new Map(state.tasks);
-            nextState.tasks.set(task.id, task);
-
-            if (phase === "start") {
-                nextState.currentTask = task;
-            } else if (phase === "complete" || phase === "fail") {
-                nextState.currentTask = task;
-            }
+        case "plan:set": {
+            nextState.plan = event.plan;
+            nextState.phase = "idle";
             break;
         }
 
@@ -46,23 +41,31 @@ export function reducer(state: RuntimeState, event: AgentEvent): RuntimeState {
             
             if (phase === "start") {
                 nextState.runningTools = new Map(state.runningTools);
-                nextState.runningTools.set(id, { id, toolName });
+                nextState.runningTools.set(id, { id, toolName, startedAt: Date.now() });
+                nextState.currentToolName = toolName;
+                nextState.phase = "tool";
             } else if (phase === "end") {
                 const execution = state.runningTools.get(id);
                 if (execution) {
                     nextState.runningTools = new Map(state.runningTools);
                     nextState.runningTools.delete(id);
                     
-                    nextState.completedTools = [...state.completedTools, execution];
+                    nextState.completedTools = [...state.completedTools, { ...execution, finishedAt: Date.now() }];
+                }
+                if (nextState.runningTools.size === 0) {
+                    nextState.phase = "thinking";
+                    nextState.currentToolName = undefined;
                 }
             }
-            // For 'event' phase we don't modify state in this minimal normalized view,
-            // but we could store outputs here if needed.
             break;
         }
 
         case "model": {
-            // Text events are streamed directly to stdout, no state mutation required
+            if (event.payload.type === "thinking" || event.payload.type === "text") {
+                nextState.phase = "thinking";
+            } else if (event.payload.type === "done" || event.payload.type === "error") {
+                nextState.phase = "idle";
+            }
             break;
         }
     }
