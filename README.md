@@ -1,6 +1,6 @@
 # Odin: Agentic Coding Assistant
 
-Odin is a local-first, goal-driven AI software engineering agent featuring a real-time, responsive Terminal User Interface (TUI). Designed as a monorepo (Turborepo), Odin orchestrates complex coding tasks by decoupling the LLM planning phase from tool execution, mitigating context overflow and "runaway tool loops" common in standard ReAct agents.
+Odin is a provider-agnostic, goal-driven AI software engineering agent featuring a real-time, responsive Terminal User Interface (TUI). Designed as a monorepo (Turborepo), Odin orchestrates complex coding tasks by decoupling the LLM planning phase from tool execution, mitigating context overflow and "runaway tool loops" common in standard ReAct agents.
 
 ## 🚀 Key Features
 
@@ -14,8 +14,8 @@ Odin is a local-first, goal-driven AI software engineering agent featuring a rea
 - **Event-Driven State Machine**: A Redux-style reducer pattern (`RuntimeState`) synchronizes concurrent background tool execution, telemetry tracking, and CLI rendering safely without race conditions.
 - **Buffered Rendering Queue**: Prevents the animated spinner and live-streaming AI text from overwriting each other in the terminal.
 
-### 3. Local-First AI Integration & Security
-- **Ollama Integration**: Built to run lightweight instruction models (e.g., Qwen) entirely offline for privacy-preserving workspace analysis.
+### 3. Pluggable AI Integration & Security
+- **Provider-Agnostic LLM Pipeline**: Features an extensible provider architecture built to easily swap between local LLMs (like Ollama) and cloud models, giving developers flexibility over privacy and cost.
 - **CLI Permission Manager**: A path-based security sandbox intercepts the AI's tool calls, enforcing user-approval workflows before executing potentially destructive file system or bash operations.
 
 ## 🛠️ Tech Stack
@@ -23,7 +23,7 @@ Odin is a local-first, goal-driven AI software engineering agent featuring a rea
 - **Runtime**: [Bun](https://bun.sh/)
 - **Language**: TypeScript
 - **Architecture**: [Turborepo](https://turbo.build/) (Monorepo)
-- **AI Provider**: Local LLM via [Ollama](https://ollama.com/)
+- **AI Provider**: Pluggable architecture (currently using [Ollama](https://ollama.com/) for local models, ready for cloud integration)
 - **CLI Utilities**: `chalk`, `cli-spinners`, `log-update`, `fast-glob`
 
 ## 📦 Workspace Structure
