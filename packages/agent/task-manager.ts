@@ -1,65 +1,60 @@
-import { randomUUID } from "node:crypto";
-import type { Task, TaskHandle } from "./task";
-import type { TaskEvent } from "./agent-events";
+import type { ExecutionPlan, PlanTask } from "./planning";
+import type { AgentEvent } from "./agent-events";
 
 export class TaskManager {
-    private readonly tasks = new Map<string, Task>();
+    private plan?: ExecutionPlan;
+    
+    emit?: (event: AgentEvent) => void;
 
-    emit?: (event: { type: "task"; payload: TaskEvent }) => void;
-
-    start(description: string): TaskHandle {
-        const id = randomUUID();
-        const task: Task = {
-            id,
-            description,
-            status: "running",
-            startedAt: new Date()
-        };
-
-        this.tasks.set(id, task);
-
+    loadPlan(plan: ExecutionPlan) {
+        this.plan = plan;
         this.emit?.({
-            type: "task",
-            payload: { phase: "start", task }
+            type: "plan:set",
+            plan
         });
-
-        return {
-            task,
-            complete: () => {
-                task.status = "completed";
-                task.completedAt = new Date();
-                this.emit?.({
-                    type: "task",
-                    payload: { phase: "complete", task }
-                });
-            },
-            fail: (error?: unknown) => {
-                task.status = "failed";
-                task.completedAt = new Date();
-                this.emit?.({
-                    type: "task",
-                    payload: { phase: "fail", task, error }
-                });
-            }
-        };
     }
 
-    list(): readonly Readonly<Task>[] {
-        return [...this.tasks.values()];
+    getPlan(): ExecutionPlan | undefined {
+        return this.plan;
     }
 
-    active(): Readonly<Task> | undefined {
-        const arr = [...this.tasks.values()];
-        // Find the last started task that is still running
-        for (let i = arr.length - 1; i >= 0; i--) {
-            if (arr[i]!.status === "running") {
-                return arr[i];
-            }
+    startTask(id: string) {
+        if (!this.plan) return;
+        const task = this.plan.tasks.find(t => t.id === id);
+        if (task) {
+            task.status = "running";
+            this.emit?.({ type: "plan:set", plan: this.plan });
         }
-        return undefined;
+    }
+
+    completeTask(id: string) {
+        if (!this.plan) return;
+        const task = this.plan.tasks.find(t => t.id === id);
+        if (task) {
+            task.status = "completed";
+            this.emit?.({ type: "plan:set", plan: this.plan });
+        }
+    }
+
+    failTask(id: string, error?: unknown) {
+        if (!this.plan) return;
+        const task = this.plan.tasks.find(t => t.id === id);
+        if (task) {
+            task.status = "failed";
+            // Store error in metadata
+            task.metadata = task.metadata || {};
+            task.metadata.error = error;
+            this.emit?.({ type: "plan:set", plan: this.plan });
+        }
+    }
+
+    active(): PlanTask | undefined {
+        if (!this.plan) return undefined;
+        // Find the first task that is running
+        return this.plan.tasks.find(t => t.status === "running");
     }
 
     clear(): void {
-        this.tasks.clear();
+        this.plan = undefined;
     }
 }
