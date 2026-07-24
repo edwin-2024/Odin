@@ -58,11 +58,3 @@ odin/
    bun run start
    ```
 
-## 🤝 Architecture Notes for Interviewers
-
-The hardest technical challenge in building Odin was the **Event Loop & TUI Rendering**. Because AI text streams in chunks asynchronously while tools are running in the background, naive `console.log` approaches resulted in corrupted terminal states. 
-
-This was solved by:
-1. Emitting strongly-typed events (`AgentEvent`) for every model chunk and tool phase.
-2. Passing those events through a synchronous `reducer` to build an immutable `RuntimeState`.
-3. Buffering stdout projections (`hasBufferedRenders`) during user prompts to ensure the terminal cursor and input line remained clean while the background spinner ticked.
