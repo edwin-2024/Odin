@@ -48,9 +48,15 @@ odin/
    ```
 
 2. **Configure Environment**
-   Create a `.env` file at the root and specify your Ollama model:
+   Create a `.env` file at the root and specify your AI Provider and Model. (Ollama is currently supported for local execution).
    ```env
+   # Example: Local Ollama Model
    ODIN_MODEL=qwen3:4b-instruct-2507-q4_K_M
+   
+   # Example: Cloud Provider (Coming Soon)
+   # ODIN_PROVIDER=openai
+   # ODIN_API_KEY=your_api_key
+   # ODIN_MODEL=gpt-4o
    ```
 
 3. **Run Odin**
