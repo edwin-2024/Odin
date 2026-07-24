@@ -1,8 +1,6 @@
 import { promises as fs } from "node:fs";
 import path, { join } from "node:path";
 import fg from "fast-glob";
-import { spawn } from "node:child_process";
-
 import type {
     GrepMatch,
     GrepOptions,

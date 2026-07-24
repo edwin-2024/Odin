@@ -1,159 +1,68 @@
-# Turborepo starter
+# Odin: Agentic Coding Assistant
 
-This Turborepo starter is maintained by the Turborepo core team.
+Odin is a local-first, goal-driven AI software engineering agent featuring a real-time, responsive Terminal User Interface (TUI). Designed as a monorepo (Turborepo), Odin orchestrates complex coding tasks by decoupling the LLM planning phase from tool execution, mitigating context overflow and "runaway tool loops" common in standard ReAct agents.
 
-## Using this example
+## 🚀 Key Features
 
-Run the following command:
+### 1. Goal-Driven Execution Architecture
+- **Decoupled Planner & Executor**: Odin uses an explicit `LLMPlanner` to generate structured JSON execution plans. The `AgentExecutor` then runs each task in isolation by injecting explicit sub-task instructions ("CRITICAL INSTRUCTION: You MUST ONLY fulfill this specific task...").
+- **Fast-Path Heuristics**: Custom request-classification algorithms (`isSimpleQuery`) bypass expensive LLM planning phases for conversational inputs, drastically reducing latency and improving UX.
+- **Resilient Parsing Pipeline**: Robust fallback mechanisms safely extract execution plans from malformed LLM JSON outputs and markdown blocks.
 
-```sh
-npx create-turbo@latest
+### 2. High-Performance Terminal User Interface (TUI)
+- **Responsive Animations**: A fluid, non-blocking TUI inspired by Claude Code, featuring animated spinners, dynamic state dashboards, and inline streaming text using `log-update`, `chalk`, and `cli-spinners`.
+- **Event-Driven State Machine**: A Redux-style reducer pattern (`RuntimeState`) synchronizes concurrent background tool execution, telemetry tracking, and CLI rendering safely without race conditions.
+- **Buffered Rendering Queue**: Prevents the animated spinner and live-streaming AI text from overwriting each other in the terminal.
+
+### 3. Local-First AI Integration & Security
+- **Ollama Integration**: Built to run lightweight instruction models (e.g., Qwen) entirely offline for privacy-preserving workspace analysis.
+- **CLI Permission Manager**: A path-based security sandbox intercepts the AI's tool calls, enforcing user-approval workflows before executing potentially destructive file system or bash operations.
+
+## 🛠️ Tech Stack
+
+- **Runtime**: [Bun](https://bun.sh/)
+- **Language**: TypeScript
+- **Architecture**: [Turborepo](https://turbo.build/) (Monorepo)
+- **AI Provider**: Local LLM via [Ollama](https://ollama.com/)
+- **CLI Utilities**: `chalk`, `cli-spinners`, `log-update`, `fast-glob`
+
+## 📦 Workspace Structure
+
+```text
+odin/
+├── apps/
+│   └── tui/              # The CLI application (entry point, renderer, state machine)
+├── packages/
+│   ├── agent/            # Core agent orchestration (Planner, Executor, Task Manager)
+│   ├── ai/               # AI provider abstractions (Ollama, Event Streams)
+│   ├── runtime/          # File system, Terminal, Git, and Permission Manager
+│   ├── shared/           # Shared types, messages, and mutexes
+│   └── tools/            # Tool Registry and Implementations (Bash, Read/Write File, etc)
 ```
 
-## What's inside?
+## 🚀 Getting Started
 
-This Turborepo includes the following packages/apps:
+1. **Install Dependencies**
+   ```bash
+   bun install
+   ```
 
-### Apps and Packages
+2. **Configure Environment**
+   Create a `.env` file at the root and specify your Ollama model:
+   ```env
+   ODIN_MODEL=qwen3:4b-instruct-2507-q4_K_M
+   ```
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+3. **Run Odin**
+   ```bash
+   bun run start
+   ```
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## 🤝 Architecture Notes for Interviewers
 
-### Utilities
+The hardest technical challenge in building Odin was the **Event Loop & TUI Rendering**. Because AI text streams in chunks asynchronously while tools are running in the background, naive `console.log` approaches resulted in corrupted terminal states. 
 
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo build
-bun dlx turbo build
-bun exec turbo build
-```
-
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo build --filter=docs
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-bun exec turbo build --filter=docs
-bun exec turbo build --filter=docs
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-bun exec turbo dev
-bun exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-bun exec turbo dev --filter=web
-bun exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-bun exec turbo login
-bun exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-bun exec turbo link
-bun exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+This was solved by:
+1. Emitting strongly-typed events (`AgentEvent`) for every model chunk and tool phase.
+2. Passing those events through a synchronous `reducer` to build an immutable `RuntimeState`.
+3. Buffering stdout projections (`hasBufferedRenders`) during user prompts to ensure the terminal cursor and input line remained clean while the background spinner ticked.
