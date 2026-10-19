@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
 import { Agent, SimpleContextManager, TelemetryCollector } from "@odin/agent";
-import { OllamaProvider } from "@odin/ai";
+import { createProvider } from "@odin/ai";
 import { BashTool, ReadFileTool, ToolRegistry, WriteFileTool, EditFileTool, GitStatusTool, ListDirectoryTool, GlobTool, GrepTool } from "@odin/tools";
 import { CliPermissionManager, type PermissionRule, NodeWorkspace, NodeTerminal, NodeGit } from "@odin/runtime";
 import type { TerminalEvent } from "@odin/runtime/terminal/events";
@@ -32,9 +32,15 @@ async function main() {
   registry.register(new BashTool(terminal));
   registry.register(new GitStatusTool(git));
 
-  const modelName = process.env.ODIN_MODEL || "qwen3:4b-instruct-2507-q4_K_M";
+  const providerName = (process.env.ODIN_PROVIDER || "ollama").toLowerCase();
+  const modelName =
+    process.env.ODIN_MODEL ||
+    (providerName === "ollama" ? "qwen3:4b-instruct-2507-q4_K_M" : "gpt-4o");
 
-  const provider = new OllamaProvider(modelName);
+  const provider = createProvider({
+    provider: providerName,
+    model: modelName,
+  });
 
   const rl = createInterface({
     input: stdin,
@@ -62,7 +68,7 @@ async function main() {
 
   // ── Welcome Banner ─────────────────────────────────────────
   console.log("");
-  console.log(`  ${c.bold(c.accent("⬡"))} ${c.bold("Odin")} ${c.dim(`· ${modelName}`)}`);
+  console.log(`  ${c.bold(c.accent("⬡"))} ${c.bold("Odin")} ${c.dim(`· [${providerName}] ${modelName}`)}`);
   console.log(c.dim(`  Type 'exit' to quit, '/clear' to reset memory.`));
   console.log("");
 

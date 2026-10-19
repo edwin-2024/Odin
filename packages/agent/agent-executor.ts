@@ -16,6 +16,7 @@ export class AgentExecutor {
     private readonly toolExecutor: ToolExecutor,
     private readonly contextManager: ContextManager,
     private readonly planner: Planner,
+    private readonly maxStepsPerTask: number = 25,
   ) { }
 
     private async callModel(context: ExecutionContext): Promise<AssistantMessage> {
@@ -65,7 +66,17 @@ export class AgentExecutor {
             context.conversation.addUser(instruction);
             
             let taskCompleted = false;
+            let stepCount = 0;
         while (!taskCompleted) {
+            stepCount++;
+            if (stepCount > this.maxStepsPerTask) {
+                const limitError = new Error(
+                    `Task "${task.title}" exceeded maximum allowed tool steps (${this.maxStepsPerTask}). Aborting to prevent runaway execution.`
+                );
+                context.taskManager.failTask(task.id, limitError);
+                throw limitError;
+            }
+
             let assistant: AssistantMessage;
             try {
                 assistant = await this.callModel(context);

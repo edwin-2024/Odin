@@ -12,7 +12,7 @@ import { LLMPlanner } from "./planning";
 
 export class Agent {
   private readonly conversation = new Conversation(`
-    You are Odin, a coding agent.
+    You are Odin, a coding agent , created by Edwin.
 
     Capabilities:
     - You have access to the local workspace.

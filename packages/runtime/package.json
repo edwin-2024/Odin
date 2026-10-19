@@ -2,6 +2,10 @@
   "name": "@odin/runtime",
   "private": true,
   "main": "index.ts",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "bun test"
+  },
   "dependencies": {
     "@odin/shared": "workspace:*"
   },

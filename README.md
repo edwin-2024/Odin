@@ -48,19 +48,28 @@ odin/
    ```
 
 2. **Configure Environment**
-   Create a `.env` file at the root and specify your AI Provider and Model. (Ollama is currently supported for local execution).
+   Create a `.env` file at the root and specify your AI Provider and Model. Supports Ollama as well as OpenAI, OpenRouter, Groq, DeepSeek, and any OpenAI-compatible endpoint.
    ```env
-   # Example: Local Ollama Model
+   # Option 1: Local Ollama Model
+   ODIN_PROVIDER=ollama
    ODIN_MODEL=qwen3:4b-instruct-2507-q4_K_M
    
-   # Example: Cloud Provider (Coming Soon)
-   # ODIN_PROVIDER=openai
-   # ODIN_API_KEY=your_api_key
-   # ODIN_MODEL=gpt-4o
+   # Option 2: Cloud Provider (OpenAI, OpenRouter, Groq, DeepSeek)
+   ODIN_PROVIDER=openai
+   ODIN_API_KEY=your_api_key
+   ODIN_MODEL=gpt-4o
+   # ODIN_BASE_URL=https://api.openai.com/v1 # Optional custom endpoint
    ```
 
-3. **Run Odin**
+3. **Run Odin & Run Tests**
    ```bash
+   # Run the TUI
    bun run start
+
+   # Run type checks across all packages
+   bun run check-types
+
+   # Run unit tests across all packages
+   bun run test
    ```
 

@@ -154,8 +154,8 @@ Expected output format:
                 "rename", "copy", "grep", "glob", "commit", "push", "pull",
                 "implement", "debug", "inspect", "trace", "summarize", "report",
             ];
-            const lower = text.toLowerCase();
-            const hasAction = actionKeywords.some(kw => lower.includes(kw));
+            const lowerWords = new Set(text.toLowerCase().split(/\W+/));
+            const hasAction = actionKeywords.some(kw => lowerWords.has(kw));
             if (!hasAction) return true;
         }
         return false;

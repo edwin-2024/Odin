@@ -2,6 +2,10 @@
   "name": "@odin/shared",
   "private": true,
   "main": "index.ts",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

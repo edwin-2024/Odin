@@ -49,8 +49,10 @@ export class NodeWorkspace
         file: string,
         content: string,
     ) {
+        const resolved = this.resolve(file);
+        await fs.mkdir(path.dirname(resolved), { recursive: true });
         await fs.writeFile(
-            this.resolve(file),
+            resolved,
             content,
         );
     }
@@ -60,17 +62,30 @@ export class NodeWorkspace
         search: string,
         replace: string,
     ) {
-        const file = await this.read(path);
+        const resolvedPath = this.resolve(path);
+        let file: string;
+        try {
+            file = await fs.readFile(resolvedPath, "utf8");
+        } catch (error: any) {
+            if (error.code === "ENOENT") {
+                throw new Error(`Error: File not found: ${path}.`);
+            }
+            throw error;
+        }
 
-        // Many local models struggle with JSON string escaping and output literal \\n characters
+        // Many local models struggle with JSON string escaping and output literal \n characters
         // instead of actual newlines. We must unescape them to make the tool robust.
         let unescapedSearch = search.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t");
         let unescapedReplace = replace.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t");
 
-        // Normalize search string to match the file's line endings
-        const normalizedSearch = file.includes("\r\n")
+        // Normalize search and replace strings to match the file's line endings
+        const isCRLF = file.includes("\r\n");
+        const normalizedSearch = isCRLF
             ? unescapedSearch.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")
             : unescapedSearch.replace(/\r\n/g, "\n");
+        const normalizedReplace = isCRLF
+            ? unescapedReplace.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")
+            : unescapedReplace;
 
         const count = file.split(normalizedSearch).length - 1;
 
@@ -82,7 +97,7 @@ export class NodeWorkspace
             throw new Error(`Found ${count} matches for search text in ${path}. Matches must be unique.`);
         }
 
-        const updated = file.replace(normalizedSearch, unescapedReplace);
+        const updated = file.replace(normalizedSearch, normalizedReplace);
 
         await this.write(path, updated);
 
@@ -97,14 +112,15 @@ export class NodeWorkspace
         }
     }
 
-    async list(path: string): Promise<DirectoryEntry[]> {
-        const entries = await fs.readdir(path, {
+    async list(directoryPath: string): Promise<DirectoryEntry[]> {
+        const resolvedDir = this.resolve(directoryPath);
+        const entries = await fs.readdir(resolvedDir, {
             withFileTypes: true,
         });
 
         return entries.map(entry => ({
             name: entry.name,
-            path: join(path, entry.name).replace(/\\/g, "/"),
+            path: join(directoryPath, entry.name).replace(/\\/g, "/"),
             type: entry.isDirectory()
                 ? "directory"
                 : "file",
@@ -118,9 +134,8 @@ export class NodeWorkspace
             ignore?: string[];
         }
     ): Promise<string[]> {
-
         return fg(pattern, {
-            cwd: options?.cwd,
+            cwd: options?.cwd ? this.resolve(options.cwd) : this.root,
             ignore: options?.ignore,
             onlyFiles: true,
         });
