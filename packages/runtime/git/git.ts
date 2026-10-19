@@ -5,10 +5,40 @@ export interface GitStatus {
   untracked: string[];
 }
 
+export interface GitDiffOptions {
+  staged?: boolean;
+  path?: string;
+  target?: string;
+}
+
+export interface GitCommitLog {
+  hash: string;
+  author: string;
+  date: string;
+  subject: string;
+}
+
+export interface GitLogOptions {
+  maxCount?: number;
+  path?: string;
+}
+
+export interface GitCommitOptions {
+  message: string;
+  all?: boolean;
+  files?: string[];
+}
+
 export interface Git {
   status(): Promise<GitStatus>;
 
-  diff(): Promise<string>;
+  diff(options?: GitDiffOptions): Promise<string>;
 
-  commit(message: string): Promise<void>;
+  log(options?: GitLogOptions): Promise<GitCommitLog[]>;
+
+  commit(options: GitCommitOptions | string): Promise<void>;
+  commit(
+    message: string,
+    options?: Omit<GitCommitOptions, "message">,
+  ): Promise<void>;
 }

@@ -3,10 +3,12 @@ export * from "./write-file";
 export * from "./edit-file";
 export * from "./bash-tool";
 export * from "./git-status";
+export * from "./git-diff";
+export * from "./git-log";
+export * from "./git-commit";
 export * from "./registry";
 export * from "./tool";
 export * from "./tool-executor";
 export * from "./list-directory";
 export * from "./glob-tool";
 export * from "./grep-tool";
-

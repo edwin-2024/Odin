@@ -10,6 +10,9 @@ import {
   WriteFileTool,
   EditFileTool,
   GitStatusTool,
+  GitDiffTool,
+  GitLogTool,
+  GitCommitTool,
   ListDirectoryTool,
   GlobTool,
   GrepTool,
@@ -47,6 +50,9 @@ async function main() {
   registry.register(new GrepTool(workspace));
   registry.register(new BashTool(terminal));
   registry.register(new GitStatusTool(git));
+  registry.register(new GitDiffTool(git));
+  registry.register(new GitLogTool(git));
+  registry.register(new GitCommitTool(git));
 
   const providerName = (process.env.ODIN_PROVIDER || "ollama").toLowerCase();
   const modelName =
