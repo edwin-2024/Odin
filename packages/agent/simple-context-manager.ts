@@ -1,22 +1,43 @@
 import type { ContextManager } from "./context-manager";
 import type { Message, AssistantMessage } from "@odin/shared";
+import {
+  CompactingContextManager,
+  type CompactingContextManagerOptions,
+} from "./compacting-context-manager";
+
+export { CompactingContextManager, type CompactingContextManagerOptions };
 
 export class SimpleContextManager implements ContextManager {
-  constructor(
-    private readonly maxMessages = 20
-  ) {}
+  private readonly maxMessages?: number;
+  private readonly compactingManager?: CompactingContextManager;
 
-  async prepare(
-    messages: Message[]
-  ): Promise<Message[]> {
+  constructor(
+    maxMessagesOrOptions: number | CompactingContextManagerOptions = 20,
+  ) {
+    if (typeof maxMessagesOrOptions === "number") {
+      this.maxMessages = maxMessagesOrOptions;
+    } else {
+      this.compactingManager = new CompactingContextManager(
+        maxMessagesOrOptions,
+      );
+    }
+  }
+
+  async prepare(messages: Message[]): Promise<Message[]> {
+    if (this.compactingManager) {
+      return this.compactingManager.prepare(messages);
+    }
+
     if (messages.length === 0) {
       return [];
     }
 
-    const systemMessage = messages[0]?.role === "system" ? messages[0] : undefined;
+    const systemMessage =
+      messages[0]?.role === "system" ? messages[0] : undefined;
     const nonSystem = systemMessage ? messages.slice(1) : [...messages];
 
-    const budget = systemMessage ? Math.max(1, this.maxMessages - 1) : this.maxMessages;
+    const maxMsgs = this.maxMessages ?? 20;
+    const budget = systemMessage ? Math.max(1, maxMsgs - 1) : maxMsgs;
     if (nonSystem.length <= budget) {
       return systemMessage ? [systemMessage, ...nonSystem] : nonSystem;
     }
@@ -38,7 +59,10 @@ export class SimpleContextManager implements ContextManager {
       }
 
       // If starting on an assistant message that has toolCalls, advance to start from a clean turn
-      if (msg.role === "assistant" && (msg as AssistantMessage).toolCalls?.length > 0) {
+      if (
+        msg.role === "assistant" &&
+        (msg as AssistantMessage).toolCalls?.length > 0
+      ) {
         startIndex++;
         continue;
       }

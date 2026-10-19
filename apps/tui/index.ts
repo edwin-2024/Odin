@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-import { Agent, SimpleContextManager, TelemetryCollector } from "@odin/agent";
+import { Agent, CompactingContextManager, SimpleContextManager, TelemetryCollector } from "@odin/agent";
 import { createProvider } from "@odin/ai";
 import {
   BashTool,
@@ -95,7 +95,7 @@ async function main() {
     provider,
     registry,
     permissions,
-    new SimpleContextManager(20),
+    new CompactingContextManager(),
   );
 
   // ── Welcome Banner ─────────────────────────────────────────
