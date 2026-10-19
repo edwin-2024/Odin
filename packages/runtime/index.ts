@@ -3,3 +3,4 @@ export * from "./cli-permission-manager";
 export * from "./workspace";
 export * from "./terminal";
 export * from "./git";
+export * from "./diff-formatter";

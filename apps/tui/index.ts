@@ -3,8 +3,24 @@ import { stdin, stdout } from "node:process";
 
 import { Agent, SimpleContextManager, TelemetryCollector } from "@odin/agent";
 import { createProvider } from "@odin/ai";
-import { BashTool, ReadFileTool, ToolRegistry, WriteFileTool, EditFileTool, GitStatusTool, ListDirectoryTool, GlobTool, GrepTool } from "@odin/tools";
-import { CliPermissionManager, type PermissionRule, NodeWorkspace, NodeTerminal, NodeGit } from "@odin/runtime";
+import {
+  BashTool,
+  ReadFileTool,
+  ToolRegistry,
+  WriteFileTool,
+  EditFileTool,
+  GitStatusTool,
+  ListDirectoryTool,
+  GlobTool,
+  GrepTool,
+} from "@odin/tools";
+import {
+  CliPermissionManager,
+  type PermissionRule,
+  NodeWorkspace,
+  NodeTerminal,
+  NodeGit,
+} from "@odin/runtime";
 import type { TerminalEvent } from "@odin/runtime/terminal/events";
 import { config } from "dotenv";
 import path from "node:path";
@@ -54,21 +70,33 @@ async function main() {
     },
     {
       tool: "write_file",
-      matcher: (input: any) => typeof input?.path === "string" && input.path.includes("src/"),
+      matcher: (input: any) =>
+        typeof input?.path === "string" && input.path.includes("src/"),
     },
     {
       tool: "edit_file",
-      matcher: (input: any) => typeof input?.path === "string" && input.path.includes("src/"),
+      matcher: (input: any) =>
+        typeof input?.path === "string" && input.path.includes("src/"),
     },
   ];
 
-  const permissions = new CliPermissionManager(rl, policies);
+  const permissions = new CliPermissionManager(rl, policies, {
+    workspace,
+    workspaceRoot: process.cwd(),
+  });
 
-  const agent = new Agent(provider, registry, permissions, new SimpleContextManager(20));
+  const agent = new Agent(
+    provider,
+    registry,
+    permissions,
+    new SimpleContextManager(20),
+  );
 
   // ── Welcome Banner ─────────────────────────────────────────
   console.log("");
-  console.log(`  ${c.bold(c.accent("⬡"))} ${c.bold("Odin")} ${c.dim(`· [${providerName}] ${modelName}`)}`);
+  console.log(
+    `  ${c.bold(c.accent("⬡"))} ${c.bold("Odin")} ${c.dim(`· [${providerName}] ${modelName}`)}`,
+  );
   console.log(c.dim(`  Type 'exit' to quit, '/clear' to reset memory.`));
   console.log("");
 
@@ -81,7 +109,9 @@ async function main() {
 
     if (input.trim() === "/clear") {
       agent.clear();
-      console.log(`  ${c.success("✓")} ${c.dim("Conversation memory cleared.")}\n`);
+      console.log(
+        `  ${c.success("✓")} ${c.dim("Conversation memory cleared.")}\n`,
+      );
       continue;
     }
 
@@ -140,16 +170,25 @@ async function main() {
 
           // 2. Telemetry
           if (event.type === "model") {
-             if (event.payload.type === "thinking" || event.payload.type === "text") {
-                 if (!isAssistantSpeaking && !isThinking) {
-                     telemetry.modelStarted();
-                 }
-             } else if (event.payload.type === "done" || event.payload.type === "error" || event.payload.type === "tool-call") {
-                 telemetry.modelFinished();
-             }
+            if (
+              event.payload.type === "thinking" ||
+              event.payload.type === "text"
+            ) {
+              if (!isAssistantSpeaking && !isThinking) {
+                telemetry.modelStarted();
+              }
+            } else if (
+              event.payload.type === "done" ||
+              event.payload.type === "error" ||
+              event.payload.type === "tool-call"
+            ) {
+              telemetry.modelFinished();
+            }
           } else if (event.type === "tool") {
-             if (event.payload.phase === "start") telemetry.toolStarted(event.payload.id);
-             else if (event.payload.phase === "end") telemetry.toolFinished(event.payload.id);
+            if (event.payload.phase === "start")
+              telemetry.toolStarted(event.payload.id);
+            else if (event.payload.phase === "end")
+              telemetry.toolFinished(event.payload.id);
           }
 
           let redrawDashboard = false;
@@ -204,7 +243,7 @@ async function main() {
             }
           } else if (event.type === "tool") {
             const { phase, id, toolName } = event.payload;
-            
+
             if (phase === "start") {
               toolBuffers.set(id, []);
               renderer.startSpinner();
@@ -212,18 +251,19 @@ async function main() {
             } else if (phase === "event") {
               const data = (event.payload as any)?.payload?.data;
               if (data) {
-                  const lines = toolBuffers.get(id) || [];
-                  lines.push(data.trim());
-                  toolBuffers.set(id, lines);
+                const lines = toolBuffers.get(id) || [];
+                lines.push(data.trim());
+                toolBuffers.set(id, lines);
               }
             } else if (phase === "end") {
               renderer.stopSpinner();
               if (!isPrompting) logUpdate.clear();
-              
+
               // 1-line summary
               const lines = toolBuffers.get(id) || [];
-              const execution = state.completedTools.find(t => t.id === id);
-              const duration = execution?.finishedAt && execution?.startedAt
+              const execution = state.completedTools.find((t) => t.id === id);
+              const duration =
+                execution?.finishedAt && execution?.startedAt
                   ? formatDuration(execution.finishedAt - execution.startedAt)
                   : "";
               const durationStr = duration ? c.dim(` (${duration})`) : "";
@@ -236,15 +276,17 @@ async function main() {
               } else {
                 summary = c.dim(`${lines.length} results`);
               }
-              
-              safeWrite(`  ${c.success("✓")} ${c.cyan(toolName)}${durationStr} ${c.dim("·")} ${summary}\n`);
-              
+
+              safeWrite(
+                `  ${c.success("✓")} ${c.cyan(toolName)}${durationStr} ${c.dim("·")} ${summary}\n`,
+              );
+
               toolBuffers.delete(id);
               redrawDashboard = true;
             }
           } else if (event.type === "plan:set") {
             if (!isAssistantSpeaking) {
-               redrawDashboard = true;
+              redrawDashboard = true;
             }
           }
 
@@ -253,11 +295,11 @@ async function main() {
           } else if (redrawDashboard) {
             renderer.render({ state, telemetry: telemetry.getMetrics() });
           }
-        }
+        },
       });
-      
+
       if (isAssistantSpeaking || isThinking) {
-          process.stdout.write("\n");
+        process.stdout.write("\n");
       }
 
       telemetry.turnFinished();
