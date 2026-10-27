@@ -91,4 +91,36 @@ describe("LLMPlanner", () => {
     expect(plan.tasks.length).toBe(1);
     expect(plan.tasks[0]!.title).toBe("Fulfill request");
   });
+
+  it("dynamically replans when a sub-task fails", async () => {
+    const replanJson = JSON.stringify({
+      goal: "Implement authentication",
+      tasks: [
+        { id: "r1", title: "Debug JWT secret missing", objective: "Check environment variables", dependsOn: [] },
+      ],
+    });
+
+    const mockModel = new MockChatModel(replanJson);
+    const planner = new LLMPlanner(mockModel);
+    const conversation = new Conversation("system");
+    conversation.addUser("Implement auth");
+
+    const initialPlan = {
+      goal: "Implement authentication",
+      tasks: [
+        { id: "1", title: "Review auth schema", status: "completed" as const, dependsOn: [] },
+        { id: "2", title: "Add auth endpoint", status: "running" as const, dependsOn: [] },
+      ],
+    };
+
+    const revisedPlan = await planner.replan(conversation, initialPlan, "2", "Error: JWT_SECRET not found in .env");
+
+    expect(revisedPlan.tasks.length).toBe(3);
+    expect(revisedPlan.tasks[0]!.title).toBe("Review auth schema");
+    expect(revisedPlan.tasks[0]!.status).toBe("completed");
+    expect(revisedPlan.tasks[1]!.id).toBe("2");
+    expect(revisedPlan.tasks[1]!.status).toBe("failed");
+    expect(revisedPlan.tasks[2]!.title).toBe("Debug JWT secret missing");
+    expect(revisedPlan.tasks[2]!.status).toBe("pending");
+  });
 });

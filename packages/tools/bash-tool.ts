@@ -15,7 +15,7 @@ export interface BashCallbacks {
 
 export class BashTool implements Tool<BashInput> {
     readonly name = "bash";
-  readonly executionMode = "serial" as const;
+    readonly executionMode = "serial" as const;
 
     readonly description =
         "Execute a shell command in the current workspace.";
@@ -30,7 +30,7 @@ export class BashTool implements Tool<BashInput> {
             },
             timeout: {
                 type: "number",
-                description: "Timeout in milliseconds (optional)",
+                description: "Timeout in milliseconds (optional, defaults to 30000)",
             }
         },
 
@@ -43,7 +43,7 @@ export class BashTool implements Tool<BashInput> {
 
     async execute(input: BashInput, callbacks?: BashCallbacks) {
         const stream =
-            this.terminal.run(input.command);
+            this.terminal.run(input.command, input.timeout);
 
         let stdout = "";
         let stderr = "";

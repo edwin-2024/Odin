@@ -5,14 +5,15 @@ export interface EditFileInput {
     path: string;
     search: string;
     replace: string;
+    occurrence?: number;
 }
 
 export class EditFileTool implements Tool<EditFileInput> {
     readonly name = "edit_file";
-  readonly executionMode = "serial" as const;
+    readonly executionMode = "serial" as const;
 
     readonly description =
-        "Edit an existing file by searching for an exact string match and replacing it.";
+        "Edit an existing file by searching for an exact string match and replacing it. Supports optional occurrence for disambiguation if the text appears multiple times.";
 
     readonly schema = {
         type: "object" as const,
@@ -23,11 +24,15 @@ export class EditFileTool implements Tool<EditFileInput> {
             },
             search: {
                 type: "string",
-                description: "The exact string to search for and replace. Must match exactly once in the file.",
+                description: "The exact string to search for and replace. Must match uniquely unless occurrence is specified.",
             },
             replace: {
                 type: "string",
                 description: "The new string to replace the search string with.",
+            },
+            occurrence: {
+                type: "number",
+                description: "Optional 1-based occurrence number to replace when the search string appears multiple times in the file.",
             },
         },
         required: ["path", "search", "replace"],
@@ -42,6 +47,7 @@ export class EditFileTool implements Tool<EditFileInput> {
             input.path,
             input.search,
             input.replace,
+            { occurrence: input.occurrence }
         );
 
         return {

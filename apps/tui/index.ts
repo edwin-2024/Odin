@@ -1,7 +1,15 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
 
-import { Agent, CompactingContextManager, SimpleContextManager, TelemetryCollector } from "@odin/agent";
+import {
+  Agent,
+  CompactingContextManager,
+  SimpleContextManager,
+  TelemetryCollector,
+  SessionStore,
+} from "@odin/agent";
 import { createProvider } from "@odin/ai";
 import {
   BashTool,
@@ -26,7 +34,6 @@ import {
 } from "@odin/runtime";
 import type { TerminalEvent } from "@odin/runtime/terminal/events";
 import { config } from "dotenv";
-import path from "node:path";
 import chalk from "chalk";
 
 import { Renderer } from "./renderer";
@@ -96,18 +103,48 @@ async function main() {
     registry,
     permissions,
     new CompactingContextManager(),
+    {
+      terminal,
+      verificationCommand: process.env.ODIN_VERIFY_CMD,
+    },
   );
+
+  const sessionStore = new SessionStore(path.join(process.cwd(), ".odin/odin.db"));
+  let currentSessionId: string = randomUUID();
 
   // ── Welcome Banner ─────────────────────────────────────────
   console.log("");
   console.log(
     `  ${c.bold(c.accent("⬡"))} ${c.bold("Odin")} ${c.dim(`· [${providerName}] ${modelName}`)}`,
   );
-  console.log(c.dim(`  Type 'exit' to quit, '/clear' to reset memory.`));
+  console.log(c.dim(`  Type 'exit' to quit, '/clear' to reset, '/sessions' to list, '/resume <id>' to resume.`));
   console.log("");
 
+  // Check CLI arguments for session resumption (e.g. odin --resume <id>)
+  const resumeArgIndex = process.argv.findIndex((arg) => arg === "--resume" || arg === "-r");
+  if (resumeArgIndex !== -1 && process.argv[resumeArgIndex + 1]) {
+    const targetId = process.argv[resumeArgIndex + 1]!;
+    const match = sessionStore.findSession(targetId);
+    if (match) {
+      const savedMessages = sessionStore.getMessages(match.id);
+      const savedPlan = sessionStore.getPlan(match.id);
+      currentSessionId = match.id;
+      agent.restoreSession(savedMessages, savedPlan ?? undefined);
+      console.log(
+        `  ${c.success("✓")} ${c.dim(`Resumed session ${match.id.slice(0, 8)} via CLI flag (${savedMessages.length} messages loaded).`)}\n`,
+      );
+    } else {
+      console.log(c.error(`  Session '${targetId}' not found.\n`));
+    }
+  }
+
   while (true) {
-    const input = await rl.question(c.accent("> "));
+    let input: string;
+    try {
+      input = await rl.question(c.accent("> "));
+    } catch {
+      break;
+    }
 
     if (input.trim() === "exit") {
       break;
@@ -115,8 +152,47 @@ async function main() {
 
     if (input.trim() === "/clear") {
       agent.clear();
+      currentSessionId = randomUUID();
       console.log(
-        `  ${c.success("✓")} ${c.dim("Conversation memory cleared.")}\n`,
+        `  ${c.success("✓")} ${c.dim("Conversation context reset. New session started.")}\n`,
+      );
+      continue;
+    }
+
+    if (input.trim() === "/sessions") {
+      const sessions = sessionStore.listSessions(10);
+      console.log(`\n  ${c.bold("Recent Sessions in .odin/odin.db:")}`);
+      if (sessions.length === 0) {
+        console.log(c.dim("    No saved sessions found."));
+      } else {
+        for (const s of sessions) {
+          const dateStr = new Date(s.updatedAt).toLocaleString();
+          console.log(
+            `  ${c.cyan(s.id.slice(0, 8))} · ${c.bold(s.goal.slice(0, 40))} ${c.dim(`(${dateStr}) [${s.status}]`)}`,
+          );
+        }
+      }
+      console.log(c.dim(`\n  Use '/resume <id>' to continue a previous session.\n`));
+      continue;
+    }
+
+    if (input.trim().startsWith("/resume")) {
+      const targetId = input.trim().split(/\s+/)[1];
+      if (!targetId) {
+        console.log(c.error("  Usage: /resume <sessionId>\n"));
+        continue;
+      }
+      const match = sessionStore.findSession(targetId);
+      if (!match) {
+        console.log(c.error(`  Session '${targetId}' not found.\n`));
+        continue;
+      }
+      const savedMessages = sessionStore.getMessages(match.id);
+      const savedPlan = sessionStore.getPlan(match.id);
+      currentSessionId = match.id;
+      agent.restoreSession(savedMessages, savedPlan ?? undefined);
+      console.log(
+        `  ${c.success("✓")} ${c.dim(`Resumed session ${match.id.slice(0, 8)} (${savedMessages.length} messages loaded).`)}\n`,
       );
       continue;
     }
@@ -128,6 +204,17 @@ async function main() {
 
       let isPrompting = false;
       let hasBufferedRenders = false;
+
+      // Ensure session is tracked in SQLite
+      if (!sessionStore.getSession(currentSessionId)) {
+        sessionStore.createSession({
+          id: currentSessionId,
+          goal: input.slice(0, 100),
+          provider: providerName,
+          model: modelName,
+        });
+      }
+      sessionStore.saveMessage(currentSessionId, { role: "user", content: input });
 
       // Start the spinner immediately (planning phase)
       renderer.render({ state, telemetry: telemetry.getMetrics() });
@@ -204,7 +291,6 @@ async function main() {
             const payload = event.payload;
 
             if (payload.type === "thinking") {
-              // Dimmed thinking tokens
               if (!isThinking) {
                 renderer.stopSpinner();
                 logUpdate.clear();
@@ -215,7 +301,6 @@ async function main() {
               redrawDashboard = false;
             } else if (payload.type === "text") {
               if (isThinking) {
-                // Transition from thinking to speaking
                 safeWrite("\n\n");
                 isThinking = false;
               }
@@ -311,12 +396,23 @@ async function main() {
       telemetry.turnFinished();
       renderer.render({ state, telemetry: telemetry.getMetrics() });
       renderer.freeze();
+
+      // Persist full conversation history, plan, telemetry, and status to SQLite
+      sessionStore.syncMessages(currentSessionId, agent.getHistory());
+      if (state.plan) {
+        sessionStore.savePlan(currentSessionId, state.plan);
+      }
+      sessionStore.saveTelemetry(currentSessionId, telemetry.getMetrics());
+      sessionStore.updateSessionStatus(currentSessionId, "completed");
+
       console.log("");
     } catch (err) {
+      sessionStore.updateSessionStatus(currentSessionId, "failed");
       console.error(c.error(`\n  Error: ${err}`));
     }
   }
 
+  sessionStore.close();
   await rl.close();
   console.log(c.dim("\n  Goodbye.\n"));
   process.exit(0);
