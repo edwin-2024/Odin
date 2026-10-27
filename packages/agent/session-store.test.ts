@@ -144,4 +144,30 @@ describe("SessionStore (bun:sqlite)", () => {
     expect(store.getMessages("s1").length).toBe(0);
     expect(store.listSessions(10).length).toBe(1);
   });
+
+  it("synchronizes message history atomically in insertion order", () => {
+    store.createSession({ id: "sync-sess", goal: "Sync test", provider: "ollama", model: "qwen" });
+
+    const messages = [
+      { role: "system" as const, content: "System prompt" },
+      { role: "user" as const, content: "Hello" },
+      {
+        role: "assistant" as const,
+        content: "Running tool",
+        toolCalls: [{ id: "call-1", name: "read_file", input: { path: "a.ts" } }],
+      },
+      { role: "tool" as const, content: "file contents", toolCallId: "call-1" },
+      { role: "assistant" as const, content: "All done!", toolCalls: [] },
+    ];
+
+    store.syncMessages("sync-sess", messages);
+    const retrieved = store.getMessages("sync-sess");
+
+    expect(retrieved.length).toBe(5);
+    expect(retrieved[0]?.role).toBe("system");
+    expect(retrieved[1]?.content).toBe("Hello");
+    expect((retrieved[2] as any)?.toolCalls?.[0]?.name).toBe("read_file");
+    expect(retrieved[3]?.role).toBe("tool");
+    expect(retrieved[4]?.content).toBe("All done!");
+  });
 });

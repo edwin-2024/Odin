@@ -21,14 +21,18 @@ export class NodeWorkspace implements Workspace {
         private readonly terminal: Terminal,
     ) { }
 
+    private isInside(parent: string, child: string): boolean {
+        const rel = path.relative(parent, child);
+        return rel === "" || (!rel.startsWith(".." + path.sep) && rel !== ".." && !path.isAbsolute(rel));
+    }
+
     private resolveSafe(file: string): string {
         const resolved = path.resolve(this.root, file);
         const resolvedRoot = path.resolve(this.root);
         const canonicalRoot = existsSync(this.root) ? realpathSync(this.root) : resolvedRoot;
 
         // Check 1: Relative check against resolved root
-        const relResolved = path.relative(resolvedRoot, resolved);
-        if (relResolved.startsWith("..") || path.isAbsolute(relResolved)) {
+        if (!this.isInside(resolvedRoot, resolved)) {
             throw new SecurityViolationError(
                 `Security Violation: Path "${file}" escapes workspace boundary.`
             );
@@ -42,8 +46,7 @@ export class NodeWorkspace implements Workspace {
 
         if (existsSync(checkPath)) {
             const canonicalCheck = realpathSync(checkPath);
-            const relCanonical = path.relative(canonicalRoot, canonicalCheck);
-            if (relCanonical.startsWith("..") || path.isAbsolute(relCanonical)) {
+            if (!this.isInside(canonicalRoot, canonicalCheck)) {
                 throw new SecurityViolationError(
                     `Security Violation: Path "${file}" resolves outside workspace boundary via symlink.`
                 );

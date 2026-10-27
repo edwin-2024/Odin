@@ -382,7 +382,8 @@ async function main() {
       renderer.render({ state, telemetry: telemetry.getMetrics() });
       renderer.freeze();
 
-      // Persist plan, telemetry, and status to SQLite
+      // Persist full conversation history, plan, telemetry, and status to SQLite
+      sessionStore.syncMessages(currentSessionId, agent.getHistory());
       if (state.plan) {
         sessionStore.savePlan(currentSessionId, state.plan);
       }

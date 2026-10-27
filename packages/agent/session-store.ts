@@ -172,10 +172,20 @@ export class SessionStore {
       .run(now, sessionId);
   }
 
+  syncMessages(sessionId: string, messages: readonly Message[]): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+      for (const msg of messages) {
+        this.saveMessage(sessionId, msg);
+      }
+    });
+    tx();
+  }
+
   getMessages(sessionId: string): Message[] {
     const rows = this.db
       .query<any, [string]>(
-        "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC",
+        "SELECT * FROM messages WHERE session_id = ? ORDER BY rowid ASC",
       )
       .all(sessionId);
 
