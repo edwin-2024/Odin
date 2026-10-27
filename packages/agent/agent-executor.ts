@@ -95,6 +95,35 @@ export class AgentExecutor {
     return { success: true, output: stdout.slice(0, 500) };
   }
 
+  private async handleReplanningOrFailure(
+    context: ExecutionContext,
+    taskId: string,
+    errorReason: string,
+    err: unknown
+  ): Promise<void> {
+    if (this.planner.replan) {
+      try {
+        const currentPlan = context.taskManager.getPlan();
+        if (currentPlan) {
+          const revisedPlan = await this.planner.replan(
+            context.conversation,
+            currentPlan,
+            taskId,
+            errorReason
+          );
+          context.taskManager.loadPlan(revisedPlan);
+          return;
+        }
+      } catch {
+        // Fall through to task failure
+      }
+    }
+
+    const failureError = err instanceof Error ? err : new Error(errorReason);
+    context.taskManager.failTask(taskId, failureError);
+    throw failureError;
+  }
+
   async execute(context: ExecutionContext): Promise<void> {
     const plan = await this.planner.plan(context.conversation);
     context.taskManager.loadPlan(plan);
@@ -129,29 +158,9 @@ export class AgentExecutor {
       while (!taskCompleted) {
         stepCount++;
         if (stepCount > this.maxStepsPerTask) {
-          const limitError = new Error(
-            `Task "${task.title}" exceeded maximum allowed tool steps (${this.maxStepsPerTask}).`
-          );
-
-          // Tier 2: Dynamic replanning when loop limit is hit
-          if (this.planner.replan) {
-            try {
-              const revisedPlan = await this.planner.replan(
-                context.conversation,
-                context.taskManager.getPlan()!,
-                task.id,
-                limitError.message
-              );
-              context.taskManager.loadPlan(revisedPlan);
-              break; // Proceed to newly replanned tasks
-            } catch {
-              context.taskManager.failTask(task.id, limitError);
-              throw limitError;
-            }
-          }
-
-          context.taskManager.failTask(task.id, limitError);
-          throw limitError;
+          const reason = `Task "${task.title}" exceeded maximum allowed tool steps (${this.maxStepsPerTask}).`;
+          await this.handleReplanningOrFailure(context, task.id, reason, new Error(reason));
+          break;
         }
 
         let assistant: AssistantMessage;
@@ -166,21 +175,13 @@ export class AgentExecutor {
             continue;
           }
 
-          if (this.planner.replan) {
-            try {
-              const revisedPlan = await this.planner.replan(
-                context.conversation,
-                context.taskManager.getPlan()!,
-                task.id,
-                `Model call failure: ${e instanceof Error ? e.message : String(e)}`
-              );
-              context.taskManager.loadPlan(revisedPlan);
-              break;
-            } catch {}
-          }
-
-          context.taskManager.failTask(task.id, e);
-          throw e;
+          await this.handleReplanningOrFailure(
+            context,
+            task.id,
+            `Model call failure: ${e instanceof Error ? e.message : String(e)}`,
+            e
+          );
+          break;
         }
 
         if (assistant.toolCalls.length === 0) {
@@ -194,6 +195,14 @@ export class AgentExecutor {
               );
               continue;
             }
+
+            await this.handleReplanningOrFailure(
+              context,
+              task.id,
+              `Automated verification failed repeatedly (${this.verificationCommand}): ${verification.output.slice(0, 200)}`,
+              new Error(`Verification failed after ${this.maxLocalRetries} retries.`)
+            );
+            break;
           }
 
           taskCompleted = true;
@@ -222,25 +231,36 @@ export class AgentExecutor {
             continue;
           }
 
-          if (this.planner.replan) {
-            try {
-              const revisedPlan = await this.planner.replan(
-                context.conversation,
-                context.taskManager.getPlan()!,
-                task.id,
-                `Tool failure: ${e instanceof Error ? e.message : String(e)}`
-              );
-              context.taskManager.loadPlan(revisedPlan);
-              break;
-            } catch {}
-          }
-
-          context.taskManager.failTask(task.id, e);
-          throw e;
+          await this.handleReplanningOrFailure(
+            context,
+            task.id,
+            `Tool failure: ${e instanceof Error ? e.message : String(e)}`,
+            e
+          );
+          break;
         }
 
+        let hasToolError = false;
+        let lastToolError = "";
         for (const message of toolMessages) {
           context.conversation.addTool(message);
+          if (typeof message.content === "string" && message.content.startsWith("Error:")) {
+            hasToolError = true;
+            lastToolError = message.content;
+          }
+        }
+
+        if (hasToolError) {
+          localRetries++;
+          if (localRetries > this.maxLocalRetries) {
+            await this.handleReplanningOrFailure(
+              context,
+              task.id,
+              `Tool error occurred repeatedly: ${lastToolError.slice(0, 200)}`,
+              new Error(lastToolError)
+            );
+            break;
+          }
         }
       }
 

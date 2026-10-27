@@ -78,12 +78,7 @@ Expected output format:
         }
 
         // Try parsing JSON out of markdown blocks just in case
-        let jsonText = response.content.trim();
-        if (jsonText.startsWith("```json")) {
-            jsonText = jsonText.replace(/^```json\n/, "").replace(/\n```$/, "");
-        } else if (jsonText.startsWith("```")) {
-            jsonText = jsonText.replace(/^```\n/, "").replace(/\n```$/, "");
-        }
+        const jsonText = this.stripCodeFences(response.content);
 
         let parsed: any;
         try {
@@ -211,12 +206,7 @@ Expected format:
             responseContent = "";
         }
 
-        let jsonText = responseContent.trim();
-        if (jsonText.startsWith("```json")) {
-            jsonText = jsonText.replace(/^```json\n/, "").replace(/\n```$/, "");
-        } else if (jsonText.startsWith("```")) {
-            jsonText = jsonText.replace(/^```\n/, "").replace(/\n```$/, "");
-        }
+        const jsonText = this.stripCodeFences(responseContent);
 
         let parsed: any;
         try {
@@ -245,12 +235,12 @@ Expected format:
             });
         }
 
-        const recoveryTasks: PlanTask[] = rawTasks.map((rt: any, index: number) => ({
-            id: typeof rt.id === "string" ? rt.id : randomUUID(),
-            title: typeof rt.title === "string" ? rt.title : `Recovery Task ${index + 1}`,
-            objective: typeof rt.objective === "string" ? rt.objective : undefined,
-            description: typeof rt.description === "string" ? rt.description : undefined,
-            dependsOn: Array.isArray(rt.dependsOn) ? rt.dependsOn : [],
+        const recoveryTasks: PlanTask[] = rawTasks.map((rawTask: any, index: number) => ({
+            id: typeof rawTask.id === "string" ? rawTask.id : randomUUID(),
+            title: typeof rawTask.title === "string" ? rawTask.title : `Recovery Task ${index + 1}`,
+            objective: typeof rawTask.objective === "string" ? rawTask.objective : undefined,
+            description: typeof rawTask.description === "string" ? rawTask.description : undefined,
+            dependsOn: Array.isArray(rawTask.dependsOn) ? rawTask.dependsOn : [],
             status: "pending",
             metadata: { replannedFrom: failedTaskId }
         }));
@@ -292,5 +282,15 @@ Expected format:
             if (!hasAction) return true;
         }
         return false;
+    }
+
+    private stripCodeFences(text: string): string {
+        const trimmed = text.trim();
+        if (trimmed.startsWith("```json")) {
+            return trimmed.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+        } else if (trimmed.startsWith("```")) {
+            return trimmed.replace(/^```\s*/, "").replace(/\s*```$/, "");
+        }
+        return trimmed;
     }
 }

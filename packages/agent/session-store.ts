@@ -287,6 +287,15 @@ export class SessionStore {
     }));
   }
 
+  findSession(query: string): SessionRecord | null {
+    const trimmed = query.trim();
+    if (!trimmed) return null;
+    const direct = this.getSession(trimmed);
+    if (direct) return direct;
+    const sessions = this.listSessions(100);
+    return sessions.find((s) => s.id.startsWith(trimmed)) || null;
+  }
+
   deleteSession(sessionId: string): void {
     this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   }

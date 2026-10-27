@@ -120,6 +120,24 @@ async function main() {
   console.log(c.dim(`  Type 'exit' to quit, '/clear' to reset, '/sessions' to list, '/resume <id>' to resume.`));
   console.log("");
 
+  // Check CLI arguments for session resumption (e.g. odin --resume <id>)
+  const resumeArgIndex = process.argv.findIndex((arg) => arg === "--resume" || arg === "-r");
+  if (resumeArgIndex !== -1 && process.argv[resumeArgIndex + 1]) {
+    const targetId = process.argv[resumeArgIndex + 1]!;
+    const match = sessionStore.findSession(targetId);
+    if (match) {
+      const savedMessages = sessionStore.getMessages(match.id);
+      const savedPlan = sessionStore.getPlan(match.id);
+      currentSessionId = match.id;
+      agent.restoreSession(savedMessages, savedPlan ?? undefined);
+      console.log(
+        `  ${c.success("✓")} ${c.dim(`Resumed session ${match.id.slice(0, 8)} via CLI flag (${savedMessages.length} messages loaded).`)}\n`,
+      );
+    } else {
+      console.log(c.error(`  Session '${targetId}' not found.\n`));
+    }
+  }
+
   while (true) {
     let input: string;
     try {
@@ -136,7 +154,7 @@ async function main() {
       agent.clear();
       currentSessionId = randomUUID();
       console.log(
-        `  ${c.success("✓")} ${c.dim("Conversation memory cleared. New session started.")}\n`,
+        `  ${c.success("✓")} ${c.dim("Conversation context reset. New session started.")}\n`,
       );
       continue;
     }
@@ -164,10 +182,7 @@ async function main() {
         console.log(c.error("  Usage: /resume <sessionId>\n"));
         continue;
       }
-      const sessions = sessionStore.listSessions(50);
-      const match = sessions.find(
-        (s) => s.id === targetId || s.id.startsWith(targetId),
-      );
+      const match = sessionStore.findSession(targetId);
       if (!match) {
         console.log(c.error(`  Session '${targetId}' not found.\n`));
         continue;
