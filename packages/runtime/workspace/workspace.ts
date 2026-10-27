@@ -29,7 +29,12 @@ export interface Workspace {
     exists(path: string): Promise<boolean>;
 
     list(path: string): Promise<DirectoryEntry[]>;
-    edit(path: string, search: string, replace: string): Promise<string>;
+    edit(
+        path: string,
+        search: string,
+        replace: string,
+        options?: { occurrence?: number }
+    ): Promise<string>;
     glob(
         pattern: string,
         options?: {

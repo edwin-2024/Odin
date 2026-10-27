@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { NodeWorkspace } from "./workspace/node-workspace";
-import { NodeTerminal } from "./terminal/node-terminal";
+import { NodeWorkspace, SecurityViolationError } from "./workspace/node-workspace";
+import { NodeTerminal, DANGEROUS_COMMAND_PATTERNS } from "./terminal/node-terminal";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -70,13 +70,23 @@ describe("NodeWorkspace", () => {
     ).rejects.toThrow("Search text not found");
   });
 
-  it("throws when search target matches multiple locations", async () => {
+  it("throws when search target matches multiple locations without occurrence hint", async () => {
     const filePath = "duplicate.txt";
     await workspace.write(filePath, "hello\nworld\nhello");
 
     expect(
       workspace.edit(filePath, "hello", "hi")
     ).rejects.toThrow("Found 2 matches for search text");
+  });
+
+  it("replaces specific occurrence when disambiguated by occurrence number", async () => {
+    const filePath = "duplicate.txt";
+    await workspace.write(filePath, "item\nitem\nitem");
+
+    // Replace 2nd occurrence
+    await workspace.edit(filePath, "item", "MODIFIED", { occurrence: 2 });
+    const content = await fs.readFile(path.join(tmpDir, filePath), "utf8");
+    expect(content).toBe("item\nMODIFIED\nitem");
   });
 
   it("lists directory entries correctly with relative paths", async () => {
@@ -95,5 +105,27 @@ describe("NodeWorkspace", () => {
 
     const matches = await workspace.glob("**/*.ts");
     expect(matches.sort()).toEqual(["src/index.ts", "src/util.ts"]);
+  });
+
+  it("prevents path traversal outside workspace boundary", async () => {
+    expect(
+      workspace.read("../../escaped.txt")
+    ).rejects.toThrow(SecurityViolationError);
+
+    expect(
+      workspace.write("../../../evil.txt", "pwned")
+    ).rejects.toThrow(SecurityViolationError);
+  });
+
+  it("blocks dangerous command execution in NodeTerminal", async () => {
+    const stream = terminal.run("rm -rf /");
+    let output = "";
+    let exitCode = 0;
+    for await (const event of stream) {
+      if (event.type === "stderr") output += event.data;
+      if (event.type === "exit") exitCode = event.code;
+    }
+    expect(exitCode).toBe(126);
+    expect(output).toContain("blocked by safety policy");
   });
 });

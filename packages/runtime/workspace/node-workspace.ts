@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync, realpathSync } from "node:fs";
 import path, { join } from "node:path";
 import fg from "fast-glob";
 import type {
@@ -8,15 +8,49 @@ import type {
 import type { DirectoryEntry, Workspace } from "./workspace";
 import type { Terminal } from "../terminal/terminal";
 
-export class NodeWorkspace
-    implements Workspace {
+export class SecurityViolationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "SecurityViolationError";
+    }
+}
+
+export class NodeWorkspace implements Workspace {
     constructor(
         private readonly root: string,
         private readonly terminal: Terminal,
     ) { }
 
-    private resolve(file: string) {
-        return path.resolve(this.root, file);
+    private resolveSafe(file: string): string {
+        const resolved = path.resolve(this.root, file);
+        const resolvedRoot = path.resolve(this.root);
+        const canonicalRoot = existsSync(this.root) ? realpathSync(this.root) : resolvedRoot;
+
+        // Check 1: Relative check against resolved root
+        const relResolved = path.relative(resolvedRoot, resolved);
+        if (relResolved.startsWith("..") || path.isAbsolute(relResolved)) {
+            throw new SecurityViolationError(
+                `Security Violation: Path "${file}" escapes workspace boundary.`
+            );
+        }
+
+        // Check 2: Canonical realpath check for symlink traversal
+        let checkPath = resolved;
+        while (!existsSync(checkPath) && checkPath !== path.dirname(checkPath)) {
+            checkPath = path.dirname(checkPath);
+        }
+
+        if (existsSync(checkPath)) {
+            const canonicalCheck = realpathSync(checkPath);
+            const relCanonical = path.relative(canonicalRoot, canonicalCheck);
+            if (relCanonical.startsWith("..") || path.isAbsolute(relCanonical)) {
+                throw new SecurityViolationError(
+                    `Security Violation: Path "${file}" resolves outside workspace boundary via symlink.`
+                );
+            }
+        }
+
+        return resolved;
     }
 
     async read(
@@ -25,7 +59,7 @@ export class NodeWorkspace
     ) {
         try {
             const text = await fs.readFile(
-                this.resolve(file),
+                this.resolveSafe(file),
                 "utf8",
             );
 
@@ -38,6 +72,9 @@ export class NodeWorkspace
 
             return sliced.map((line, idx) => `${startIdx + idx + 1} | ${line}`).join("\n");
         } catch (error: any) {
+            if (error instanceof SecurityViolationError) {
+                throw error;
+            }
             if (error.code === "ENOENT") {
                 throw new Error(`Error: File not found: ${file}.`);
             }
@@ -49,7 +86,7 @@ export class NodeWorkspace
         file: string,
         content: string,
     ) {
-        const resolved = this.resolve(file);
+        const resolved = this.resolveSafe(file);
         await fs.mkdir(path.dirname(resolved), { recursive: true });
         await fs.writeFile(
             resolved,
@@ -61,12 +98,16 @@ export class NodeWorkspace
         path: string,
         search: string,
         replace: string,
+        options?: { occurrence?: number }
     ) {
-        const resolvedPath = this.resolve(path);
+        const resolvedPath = this.resolveSafe(path);
         let file: string;
         try {
             file = await fs.readFile(resolvedPath, "utf8");
         } catch (error: any) {
+            if (error instanceof SecurityViolationError) {
+                throw error;
+            }
             if (error.code === "ENOENT") {
                 throw new Error(`Error: File not found: ${path}.`);
             }
@@ -94,7 +135,22 @@ export class NodeWorkspace
         }
 
         if (count > 1) {
-            throw new Error(`Found ${count} matches for search text in ${path}. Matches must be unique.`);
+            if (options?.occurrence && options.occurrence >= 1 && options.occurrence <= count) {
+                // Replace specific occurrence (1-based index)
+                let idx = -1;
+                let current = 0;
+                while (current < options.occurrence) {
+                    idx = file.indexOf(normalizedSearch, idx + 1);
+                    current++;
+                }
+                const before = file.substring(0, idx);
+                const after = file.substring(idx + normalizedSearch.length);
+                const updated = before + normalizedReplace + after;
+                await this.write(path, updated);
+                return updated;
+            }
+
+            throw new Error(`Found ${count} matches for search text in ${path}. Matches must be unique, or specify occurrence (1-${count}).`);
         }
 
         const updated = file.replace(normalizedSearch, normalizedReplace);
@@ -103,9 +159,10 @@ export class NodeWorkspace
 
         return updated;
     }
+
     async exists(file: string) {
         try {
-            await fs.access(this.resolve(file));
+            await fs.access(this.resolveSafe(file));
             return true;
         } catch {
             return false;
@@ -113,7 +170,7 @@ export class NodeWorkspace
     }
 
     async list(directoryPath: string): Promise<DirectoryEntry[]> {
-        const resolvedDir = this.resolve(directoryPath);
+        const resolvedDir = this.resolveSafe(directoryPath);
         const entries = await fs.readdir(resolvedDir, {
             withFileTypes: true,
         });
@@ -134,8 +191,9 @@ export class NodeWorkspace
             ignore?: string[];
         }
     ): Promise<string[]> {
+        const cwd = options?.cwd ? this.resolveSafe(options.cwd) : this.root;
         return fg(pattern, {
-            cwd: options?.cwd ? this.resolve(options.cwd) : this.root,
+            cwd,
             ignore: options?.ignore,
             onlyFiles: true,
         });
@@ -145,6 +203,8 @@ export class NodeWorkspace
         pattern: string,
         options: GrepOptions = {}
     ): Promise<GrepMatch[]> {
+        const searchPath = options.path ? this.resolveSafe(options.path) : this.root;
+
         const args = [
             "rg",
             "--json",
@@ -160,7 +220,7 @@ export class NodeWorkspace
         }
 
         const safePattern = pattern.replace(/"/g, '\\"');
-        const safePath = (options.path ?? ".").replace(/"/g, '\\"');
+        const safePath = searchPath.replace(/"/g, '\\"');
         
         args.push(`"${safePattern}"`);
         args.push(`"${safePath}"`);
@@ -169,10 +229,22 @@ export class NodeWorkspace
         const stream = this.terminal.run(command);
         
         let stdout = "";
+        let stderr = "";
+        let exitCode = 0;
+
         for await (const event of stream) {
             if (event.type === "stdout") {
                 stdout += event.data;
+            } else if (event.type === "stderr") {
+                stderr += event.data;
+            } else if (event.type === "exit") {
+                exitCode = event.code;
             }
+        }
+
+        // If ripgrep is missing or command failed, gracefully fallback to in-memory grep
+        if (exitCode !== 0 && (stderr.includes("not found") || stderr.includes("not recognized") || stdout.trim() === "")) {
+            return this.grepFallback(pattern, options);
         }
 
         const lines = stdout.split("\n").filter(Boolean);
@@ -198,6 +270,63 @@ export class NodeWorkspace
                 }
             } catch {
                 // Ignore parse errors from non-JSON output
+            }
+        }
+
+        return matches;
+    }
+
+    private async grepFallback(
+        pattern: string,
+        options: GrepOptions = {}
+    ): Promise<GrepMatch[]> {
+        const targetDir = options.path ? this.resolveSafe(options.path) : this.root;
+
+        const files = await fg("**/*", {
+            cwd: targetDir,
+            ignore: [
+                "**/node_modules/**",
+                "**/.git/**",
+                "**/.turbo/**",
+                "**/dist/**",
+                "**/build/**",
+                "**/*.png",
+                "**/*.jpg",
+                "**/*.jpeg",
+                "**/*.ico",
+                "**/*.lock"
+            ],
+            onlyFiles: true,
+            absolute: true,
+        });
+
+        const regex = new RegExp(pattern, options.caseSensitive === false ? "gi" : "g");
+        const matches: GrepMatch[] = [];
+
+        for (const fullPath of files) {
+            try {
+                const text = await fs.readFile(fullPath, "utf8");
+                const lines = text.split("\n");
+                const relPath = path.relative(this.root, fullPath).replace(/\\/g, "/");
+
+                for (let i = 0; i < lines.length; i++) {
+                    const lineText = lines[i]!;
+                    regex.lastIndex = 0;
+                    const match = regex.exec(lineText);
+                    if (match) {
+                        matches.push({
+                            path: relPath,
+                            line: i + 1,
+                            column: match.index + 1,
+                            text: lineText.trimEnd(),
+                        });
+                        if (options.maxResults && matches.length >= options.maxResults) {
+                            return matches;
+                        }
+                    }
+                }
+            } catch {
+                // Skip binary or unreadable files
             }
         }
 

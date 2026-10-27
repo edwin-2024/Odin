@@ -79,10 +79,10 @@ Expected output format:
 
         // Try parsing JSON out of markdown blocks just in case
         let jsonText = response.content.trim();
-        if (jsonText.startsWith("\`\`\`json")) {
-            jsonText = jsonText.replace(/^\`\`\`json\n/, "").replace(/\n\`\`\`$/, "");
-        } else if (jsonText.startsWith("\`\`\`")) {
-            jsonText = jsonText.replace(/^\`\`\`\n/, "").replace(/\n\`\`\`$/, "");
+        if (jsonText.startsWith("```json")) {
+            jsonText = jsonText.replace(/^```json\n/, "").replace(/\n```$/, "");
+        } else if (jsonText.startsWith("```")) {
+            jsonText = jsonText.replace(/^```\n/, "").replace(/\n```$/, "");
         }
 
         let parsed: any;
@@ -135,6 +135,139 @@ Expected output format:
         return {
             goal,
             tasks
+        };
+    }
+
+    /**
+     * Dynamic Replanning: Re-evaluates remaining tasks when a sub-task encounters an unrecoverable failure.
+     */
+    async replan(
+        conversation: Conversation,
+        currentPlan: ExecutionPlan,
+        failedTaskId: string,
+        errorReason: string
+    ): Promise<ExecutionPlan> {
+        const failedTask = currentPlan.tasks.find(t => t.id === failedTaskId) || {
+            id: failedTaskId,
+            title: `Task ${failedTaskId}`,
+            objective: "Unknown objective",
+            status: "failed" as const,
+            dependsOn: []
+        };
+
+        const completedTasks = currentPlan.tasks.filter(t => t.status === "completed");
+
+        const promptText = `A sub-task has failed during execution.
+Overall Goal: "${currentPlan.goal}"
+Failed Task: "${failedTask.title}"
+Error Diagnostic:
+${errorReason}
+
+Completed Tasks so far:
+${completedTasks.length > 0 ? completedTasks.map(t => `- [x] ${t.title}`).join("\n") : "(none)"}
+
+Please formulate revised, actionable replacement tasks to overcome this error and complete the goal.
+Rules:
+- 1-5 tasks
+- short titles
+- concrete objectives addressing the root cause
+- logical order
+
+Return JSON ONLY. Do not use markdown blocks.
+Expected format:
+{
+  "goal": "${currentPlan.goal}",
+  "tasks": [
+    {
+      "id": "${randomUUID().slice(0, 8)}",
+      "title": "Resolve error and continue",
+      "objective": "Fix the issue causing the failure",
+      "dependsOn": []
+    }
+  ]
+}`;
+
+        const messages: Message[] = [
+            {
+                role: "system",
+                content: "You are a software engineering planner revising an execution plan following a failure."
+            },
+            {
+                role: "user",
+                content: promptText
+            }
+        ];
+
+        let responseContent = "";
+        try {
+            const stream = await this.model.chat(messages, []);
+            const builder = new MessageBuilder();
+            for await (const event of stream) {
+                builder.consume(event);
+            }
+            responseContent = builder.build().content || "";
+        } catch {
+            // If model fails during replanning, synthesize a safe recovery task
+            responseContent = "";
+        }
+
+        let jsonText = responseContent.trim();
+        if (jsonText.startsWith("```json")) {
+            jsonText = jsonText.replace(/^```json\n/, "").replace(/\n```$/, "");
+        } else if (jsonText.startsWith("```")) {
+            jsonText = jsonText.replace(/^```\n/, "").replace(/\n```$/, "");
+        }
+
+        let parsed: any;
+        try {
+            parsed = JSON.parse(jsonText);
+        } catch {
+            parsed = {
+                goal: currentPlan.goal,
+                tasks: [
+                    {
+                        id: randomUUID(),
+                        title: `Recover from failure in ${failedTask.title}`,
+                        objective: `Address error: ${errorReason.slice(0, 120)}`,
+                        dependsOn: []
+                    }
+                ]
+            };
+        }
+
+        const rawTasks = Array.isArray(parsed?.tasks) ? parsed.tasks : [];
+        if (rawTasks.length === 0) {
+            rawTasks.push({
+                id: randomUUID(),
+                title: `Recover from failure in ${failedTask.title}`,
+                objective: `Address error: ${errorReason.slice(0, 120)}`,
+                dependsOn: []
+            });
+        }
+
+        const recoveryTasks: PlanTask[] = rawTasks.map((rt: any, index: number) => ({
+            id: typeof rt.id === "string" ? rt.id : randomUUID(),
+            title: typeof rt.title === "string" ? rt.title : `Recovery Task ${index + 1}`,
+            objective: typeof rt.objective === "string" ? rt.objective : undefined,
+            description: typeof rt.description === "string" ? rt.description : undefined,
+            dependsOn: Array.isArray(rt.dependsOn) ? rt.dependsOn : [],
+            status: "pending",
+            metadata: { replannedFrom: failedTaskId }
+        }));
+
+        const updatedTasks: PlanTask[] = [
+            ...completedTasks,
+            {
+                ...failedTask,
+                status: "failed",
+                metadata: { ...(failedTask.metadata || {}), error: errorReason }
+            },
+            ...recoveryTasks
+        ];
+
+        return {
+            goal: currentPlan.goal,
+            tasks: updatedTasks
         };
     }
 

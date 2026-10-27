@@ -44,4 +44,9 @@ export class Conversation {
   clear(): void {
     this.messages.length = 0;
   }
+
+  restore(messages: Message[]): void {
+    this.messages.length = 0;
+    this.messages.push(...messages);
+  }
 }
